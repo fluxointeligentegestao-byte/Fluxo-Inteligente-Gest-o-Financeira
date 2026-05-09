@@ -1,0 +1,534 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+    BarChart, 
+    Bar, 
+    XAxis, 
+    YAxis, 
+    CartesianGrid, 
+    Tooltip, 
+    ResponsiveContainer, 
+    LineChart, 
+    Line, 
+    PieChart, 
+    Pie, 
+    Cell,
+    Legend,
+    AreaChart,
+    Area,
+    ComposedChart
+} from 'recharts';
+import { 
+    LayoutDashboard, 
+    Settings, 
+    Filter, 
+    Calendar, 
+    TrendingUp, 
+    TrendingDown, 
+    Target, 
+    DollarSign, 
+    PieChart as PieChartIcon,
+    BarChart3,
+    CheckCircle2,
+    X,
+    Plus,
+    Maximize2,
+    RefreshCw,
+    Download,
+    Eye,
+    Calculator,
+    ArrowUpRight,
+    ArrowDownRight,
+    Wallet
+} from 'lucide-react';
+import { Card } from './ui/Card';
+import { Button } from './ui/Button';
+import { cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
+
+// --- Types ---
+interface Widget {
+    id: string;
+    title: string;
+    type: 'metric' | 'chart_line' | 'chart_bar' | 'chart_pie' | 'chart_combo' | 'chart_margin' | 'summary_table';
+    visible: boolean;
+    w: number; // grid width (1-4 or 6 for full row special)
+}
+
+const COLORS = ['#1a365d', '#ef4444', '#10b981', '#f59e0b', '#3b82f6', '#8b5cf6'];
+const DASHBOARD_DARK = '#1a365d';
+
+// --- Metric Card Inspired by Image ---
+const MetricCard = ({ 
+    title, 
+    value, 
+    variation, 
+    isPositive, 
+    icon: Icon,
+    isPrint = false 
+}: { 
+    title: string; 
+    value: string; 
+    variation: string; 
+    isPositive: boolean; 
+    icon: any;
+    isPrint?: boolean;
+}) => {
+    return (
+        <div className={cn(
+            "relative p-3 bg-white border-slate-200 h-full flex flex-col justify-between border",
+            !isPrint && "hover:shadow-md transition-shadow",
+        )}>
+            {/* Header: Title */}
+            <div className="flex justify-center items-center mb-1">
+                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest text-center leading-tight break-words">{title}</span>
+            </div>
+
+            {/* Value */}
+            <div className="text-center my-1">
+                <p className="text-xl font-black text-slate-900 tracking-tight leading-none">{value}</p>
+            </div>
+
+            {/* Variation */}
+            <div className={cn(
+                "flex items-center justify-center gap-0.5 text-[9px] font-bold",
+                isPositive ? "text-emerald-500" : "text-rose-500"
+            )}>
+                {isPositive ? <TrendingUp size={10} /> : <TrendingDown size={10} />}
+                {variation}
+            </div>
+        </div>
+    );
+};
+
+// --- Section Header Helper ---
+const SectionHeader = ({ number, title }: { number: string; title: string }) => (
+    <div className="bg-[#1a365d] text-white px-3 py-1.5 flex items-center gap-2 mb-4">
+        <span className="font-black text-xs">{number}.</span>
+        <h3 className="font-black text-[11px] uppercase tracking-[0.2em]">{title}</h3>
+    </div>
+);
+
+// --- DRE Table Row Helper ---
+interface DRERowProps {
+    label: string;
+    current: string;
+    previous: string;
+    variation: string;
+    isBold?: boolean;
+    isNegative?: boolean;
+    color?: "slate" | "emerald" | "rose" | "dark";
+    key?: React.Key;
+}
+
+const DRERow = ({ 
+    label, 
+    current, 
+    previous, 
+    variation, 
+    isBold = false, 
+    isNegative = false,
+    color = "slate"
+}: DRERowProps) => {
+    const textColor = isBold ? (color === "dark" ? "text-slate-900" : `text-${color}-600`) : "text-slate-600";
+    const varColor = variation.includes("-") ? "text-rose-500" : variation === "—" ? "text-slate-300" : "text-emerald-500";
+    
+    return (
+        <tr className={cn(
+            "border-b border-slate-100",
+            isBold && "bg-slate-50/30"
+        )}>
+            <td className={cn("py-2 px-4 text-left text-[10px]", isBold ? "font-black text-slate-900" : "font-medium text-slate-600")}>{label}</td>
+            <td className={cn("py-2 px-4 text-center text-[10px] font-black", textColor)}>{current}</td>
+            <td className="py-2 px-4 text-center text-[10px] font-bold text-slate-400">{previous}</td>
+            <td className={cn("py-2 px-4 text-center text-[10px] font-black", varColor)}>{variation}</td>
+        </tr>
+    );
+};
+
+// --- Main Integration ---
+export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; clientName: string }) => {
+    const [isCustomizing, setIsCustomizing] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
+    const dashboardRef = useRef<HTMLDivElement>(null);
+    const printRef = useRef<HTMLDivElement>(null);
+    
+    const [activeFilters, setActiveFilters] = useState({
+        period: '2024-04',
+        category: 'all',
+        type: 'all',
+        view: 'complet'
+    });
+
+    const dreData = [
+        { label: 'Receita Bruta', current: '43.876,67', previous: '39.100,00', variation: '12,2%', bold: false, color: "emerald" as const },
+        { label: '(-) Impostos / Deduções', current: '-1.387,89', previous: '(1.623,45)', variation: '(14,5%)', bold: false, color: "rose" as const },
+        { label: 'Receita Líquida', current: '42.488,78', previous: '37.476,55', variation: '13,4%', bold: true, color: "dark" as const },
+        { label: '(-) Custos Diretos', current: '0,00', previous: '0,00', variation: '—', bold: false },
+        { label: 'Lucro Bruto', current: '42.488,78', previous: '37.476,55', variation: '13,4%', bold: true, color: "dark" as const },
+        { label: '(-) Desp. Operacionais', current: '-33.482,63', previous: '(31.136,72)', variation: '7,5%', bold: false, color: "rose" as const },
+        { label: 'EBITDA', current: '9.006,15', previous: '6.339,83', variation: '42,1%', bold: true, color: "emerald" as const },
+        { label: 'Resultado Financeiro', current: '0,00', previous: '0,00', variation: '—', bold: false },
+        { label: '(-) IRPJ / CSLL', current: '-1.387,89', previous: '(1.623,45)', variation: '(14,5%)', bold: false, color: "rose" as const },
+        { label: 'Lucro Líquido', current: '7.618,26', previous: '4.716,38', variation: '61,5%', bold: true, color: "emerald" as const },
+    ];
+
+    const cashFlowMonths = [
+        { month: 'Jan', in: '25.858,47', out: '10.642,09', res: '15.216,38' },
+        { month: 'Fev', in: '29.453,83', out: '27.583,58', res: '1.870,25' },
+        { month: 'Mar', in: '35.300,00', out: '31.725,47', res: '3.574,53' },
+        { month: 'Abr', in: '10.100,00', out: '21.943,61', res: '-11.843,61' },
+        { month: 'Mai', in: '40.600,00', out: '33.972,40', res: '6.627,60' },
+        { month: 'Jun', in: '40.600,00', out: '33.806,50', res: '6.793,50' },
+        { month: 'Jul', in: '41.100,00', out: '36.761,82', res: '4.338,18' },
+        { month: 'Ago', in: '41.100,00', out: '37.075,88', res: '4.024,12' },
+        { month: 'Set', in: '34.100,00', out: '34.759,28', res: '-659,28' },
+        { month: 'Out', in: '38.100,00', out: '37.456,79', res: '643,21' },
+        { month: 'Nov', in: '37.850,00', out: '33.896,61', res: '3.953,39' },
+        { month: 'Dez', in: '40.850,00', out: '36.652,86', res: '4.197,14' },
+    ];
+
+    // Evolution Data (Bar + Line)
+    const evolutionData = [
+        { name: 'Jan', entries: 25858, exits: 10642, saldo: 15216 },
+        { name: 'Fev', entries: 29453, exits: 27583, saldo: 1870 },
+        { name: 'Mar', entries: 35300, exits: 31725, saldo: 3574 },
+        { name: 'Abr', entries: 10100, exits: 21943, saldo: -11843 },
+        { name: 'Mai', entries: 40600, exits: 33972, saldo: 6627 },
+        { name: 'Jun', entries: 40600, exits: 33806, saldo: 6793 },
+        { name: 'Jul', entries: 41100, exits: 36761, saldo: 4338 },
+        { name: 'Ago', entries: 41100, exits: 37075, saldo: 4024 },
+        { name: 'Set', entries: 34100, exits: 34759, saldo: -659 },
+        { name: 'Out', entries: 38100, exits: 37456, saldo: 643 },
+        { name: 'Nov', entries: 37850, exits: 33896, saldo: 3953 },
+        { name: 'Dez', entries: 40850, exits: 36652, saldo: 4197 },
+    ];
+
+    const pieData = [
+        { name: 'Pessoal', value: 640 },
+        { name: 'Taxes', value: 140 },
+        { name: 'Marketing', value: 50 },
+        { name: 'TI', value: 90 },
+        { name: 'Admin', value: 80 },
+    ];
+
+    const handleDownload = async () => {
+        const element = printRef.current;
+        if (!element) return;
+        
+        setIsDownloading(true);
+        try {
+            element.style.display = 'block';
+            
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+                onclone: (doc) => {
+                    const clonedElement = doc.getElementById('print-container');
+                    if (clonedElement) {
+                        clonedElement.style.display = 'block';
+                    }
+                }
+            });
+            
+            element.style.display = 'none';
+            
+            const imgData = canvas.toDataURL('image/png', 1.0);
+            const pdf = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4',
+                compress: true
+            });
+            
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+            
+            // Handle multi-page if height exceeds A4
+            let heightLeft = pdfHeight;
+            let position = 0;
+            const pageHeight = pdf.internal.pageSize.getHeight();
+
+            pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight, undefined, 'FAST');
+            heightLeft -= pageHeight;
+
+            while (heightLeft >= 0) {
+                position = heightLeft - pdfHeight;
+                pdf.addPage();
+                pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, pdfHeight, undefined, 'FAST');
+                heightLeft -= pageHeight;
+            }
+
+            pdf.save(`Relatorio_Mensal_${clientName.replace(/\s+/g, '_')}.pdf`);
+        } catch (error) {
+            console.error('Error:', error);
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
+    const ReportContent = ({ isPrint = false }) => (
+        <div className={cn(
+            "bg-white font-sans text-slate-900 mx-auto",
+            isPrint ? "w-[800px] p-8" : "w-full p-4 md:p-8"
+        )} id="print-content">
+            {/* Report Header */}
+            <header className="mb-8 border-b-2 border-[#1a365d] pb-2">
+                <h1 className="text-2xl font-black text-[#1a365d] uppercase tracking-tight">Relatório Mensal</h1>
+                <div className="flex justify-between items-end mt-1">
+                    <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Demonstração do Resultado · Visão Executiva</p>
+                        <p className="text-[10px] font-black text-slate-600 uppercase mt-0.5">Cliente: {clientName}</p>
+                    </div>
+                    <p className="text-xs font-black text-[#1a365d] uppercase">ABRIL / 2026</p>
+                </div>
+            </header>
+
+            {/* 1. RESUMO EXECUTIVO */}
+            <section className="mb-8">
+                <SectionHeader number="1" title="Resumo Executivo" />
+                <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
+                    <MetricCard title="Receita Bruta" value="43.877" variation="12,2%" isPositive={true} icon={BarChart3} isPrint={isPrint} />
+                    <MetricCard title="Lucro Bruto" value="42.489" variation="13,4%" isPositive={true} icon={TrendingUp} isPrint={isPrint} />
+                    <MetricCard title="EBITDA" value="9.006" variation="42,1%" isPositive={true} icon={TrendingUp} isPrint={isPrint} />
+                    <MetricCard title="Lucro Líquido" value="7.618" variation="61,5%" isPositive={true} icon={LayoutDashboard} isPrint={isPrint} />
+                    <MetricCard title="Receita Líquida" value="42.489" variation="13,4%" isPositive={true} icon={DollarSign} isPrint={isPrint} />
+                    <MetricCard title="Margem Bruta" value="96,8%" variation="1,0 p.p." isPositive={true} icon={PieChartIcon} isPrint={isPrint} />
+                    <MetricCard title="Margem EBITDA" value="20,5%" variation="4,3 p.p." isPositive={true} icon={TrendingUp} isPrint={isPrint} />
+                    <MetricCard title="Saldo Caixa" value="13.818" variation="46,2%" isPositive={false} icon={Wallet} isPrint={isPrint} />
+                </div>
+            </section>
+
+            {/* 2. CONTAS A RECEBER */}
+            <section className="mb-8">
+                <SectionHeader number="2" title="Contas a Receber" />
+                <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">A Receber</p>
+                        <p className="text-xl font-black text-slate-900">314.300</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Vencido</p>
+                        <p className="text-xl font-black text-rose-500">0</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Recebido no Mês</p>
+                        <p className="text-xl font-black text-emerald-500">35.560</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">% Inadimplência</p>
+                        <p className="text-xl font-black text-slate-900">0,0%</p>
+                    </div>
+                </div>
+            </section>
+
+            {/* 3. CONTAS A PAGAR */}
+            <section className="mb-8">
+                <SectionHeader number="3" title="Contas a Pagar" />
+                <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">A Pagar</p>
+                        <p className="text-xl font-black text-slate-900">285.639</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Em Atraso</p>
+                        <p className="text-xl font-black text-rose-500">0</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Pago no Mês</p>
+                        <p className="text-xl font-black text-emerald-500">33.918</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">% Atraso</p>
+                        <p className="text-xl font-black text-slate-900">0,0%</p>
+                    </div>
+                </div>
+            </section>
+
+            {/* 4. CONCILIAÇÃO BANCÁRIA */}
+            <section className="mb-8">
+                <SectionHeader number="4" title="Conciliação Bancária" />
+                <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
+                     <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Saldo Extrato</p>
+                        <p className="text-xl font-black text-slate-900">-</p>
+                        <p className="text-[8px] font-medium text-slate-400 mt-1 uppercase tracking-tighter">Banco Itaú</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Saldo Sistema</p>
+                        <p className="text-xl font-black text-slate-900">12.950</p>
+                        <p className="text-[8px] font-medium text-amber-600 mt-1 uppercase font-bold tracking-tighter">0 itens não conciliados</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Diferença</p>
+                        <p className="text-xl font-black text-rose-500">(12.950)</p>
+                    </div>
+                    <div className="p-4 border-l border-t border-slate-200 text-center">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Status</p>
+                        <div className="flex items-center justify-center gap-1 mt-1">
+                            <X size={14} className="text-rose-500" />
+                            <p className="text-sm font-black text-rose-500 uppercase">Divergente</p>
+                        </div>
+                    </div>
+                </div>
+                
+                {/* Cash Flow Chart */}
+                <div className="mt-8 bg-white border border-slate-200 p-6">
+                    <h4 className="text-center font-black text-slate-800 text-sm mb-4">Fluxo de Caixa Mensal</h4>
+                    <div className="h-[300px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <ComposedChart data={evolutionData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 700, fill: '#94a3b8' }} />
+                                <Legend iconType="rect" wrapperStyle={{ fontSize: '9px', fontWeight: 900, textTransform: 'uppercase', paddingTop: '20px' }} />
+                                <Bar dataKey="entries" name="Entradas" fill="#10b981" barSize={15} />
+                                <Bar dataKey="exits" name="Saídas" fill="#ef4444" barSize={15} />
+                                <Line type="monotone" dataKey="saldo" name="Saldo Final" stroke="#1a365d" strokeWidth={3} dot={{ r: 4, fill: '#1a365d' }} isAnimationActive={false} />
+                            </ComposedChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </section>
+
+            {/* 5. DRE RESUMIDA */}
+            <section className="mb-8 overflow-hidden">
+                <SectionHeader number="5" title="DRE Resumida — Comparativo Mensal" />
+                <table className="w-full border-collapse">
+                    <thead>
+                        <tr className="bg-[#1a365d] text-white">
+                            <th className="py-2 px-4 text-left text-[10px] uppercase font-black tracking-widest">Descrição</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">ABR/2026</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">MAR/2026</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">Var. %</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {dreData.map((row, i) => (
+                            <DRERow 
+                                key={i}
+                                label={row.label}
+                                current={row.current}
+                                previous={row.previous}
+                                variation={row.variation}
+                                isBold={row.bold}
+                                color={row.color || "slate"}
+                            />
+                        ))}
+                    </tbody>
+                </table>
+            </section>
+
+            {/* 6. FLUXO DE CAIXA — Resumo Mensal */}
+            <section className="mb-8">
+                <SectionHeader number="6" title="Fluxo de Caixa — Resumo Mensal" />
+                <table className="w-full border-collapse">
+                    <thead>
+                        <tr className="bg-[#1a365d] text-white">
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest w-24">Mês</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">Entradas (R$)</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">Saídas (R$)</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">Resultado (R$)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {cashFlowMonths.map((row, i) => (
+                            <tr key={i} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                                <td className="py-2 px-4 text-center text-[11px] font-bold text-slate-800">{row.month}</td>
+                                <td className="py-2 px-4 text-center text-[11px] font-bold text-emerald-600">{row.in}</td>
+                                <td className="py-2 px-4 text-center text-[11px] font-bold text-rose-500">{row.out}</td>
+                                <td className={cn(
+                                    "py-2 px-4 text-center text-[11px] font-black underline decoration-slate-200 underline-offset-4",
+                                    row.res.startsWith("-") ? "text-rose-600 bg-rose-50/30" : "text-emerald-700 bg-emerald-50/30"
+                                )}>{row.res}</td>
+                            </tr>
+                        ))}
+                        <tr className="bg-[#0f172a] text-white">
+                            <td className="py-3 px-4 text-center text-[11px] font-black uppercase tracking-widest">Total Ano</td>
+                            <td className="py-3 px-4 text-center text-[11px] font-black tracking-widest">415.012,30</td>
+                            <td className="py-3 px-4 text-center text-[11px] font-black tracking-widest">376.276,89</td>
+                            <td className="py-3 px-4 text-center text-[11px] font-black tracking-widest text-emerald-400">38.735,41</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <footer className="mt-12 text-center text-[9px] font-bold text-slate-300 uppercase tracking-[0.3em] flex justify-between items-center">
+                <span>Relatório gerado automaticamente pelo sistema BPO Financeiro</span>
+                <span>Dados integrados das abas operacionais</span>
+            </footer>
+        </div>
+    );
+
+    return (
+        <div className="space-y-6 pb-20 max-w-[1400px] mx-auto">
+            {/* Control Bar */}
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm no-print">
+                <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-1.5 rounded-lg border border-slate-200">
+                        <Calendar size={14} className="text-slate-400" />
+                        <select 
+                            value={activeFilters.period}
+                            onChange={(e) => setActiveFilters({...activeFilters, period: e.target.value})}
+                            className="bg-transparent text-[11px] font-black text-slate-700 uppercase tracking-widest outline-none cursor-pointer"
+                        >
+                            <option value="2024-04">Abril/2026</option>
+                            <option value="2024-03">Março/2026</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <Button variant="outline" size="sm" className="rounded-lg h-9" onClick={() => setIsPreviewOpen(true)}>
+                        <Eye size={14} className="mr-2" /> Visualizar
+                    </Button>
+                    <Button variant="outline" size="sm" className="rounded-lg h-9" onClick={handleDownload} disabled={isDownloading}>
+                        <Download size={14} className={cn("mr-2", isDownloading && "animate-bounce")} /> 
+                        {isDownloading ? 'Gerando...' : 'Baixar PDF'}
+                    </Button>
+                </div>
+            </div>
+
+            {/* Dashboard View - Now showing the Report Content itself */}
+            <div ref={dashboardRef} className="bg-slate-100/50 p-4 rounded-2xl border border-slate-200">
+                <ReportContent />
+            </div>
+
+            {/* Hidden Print Content */}
+            <div style={{ position: 'fixed', top: '-10000px', left: '-10000px', width: '800px', display: 'none' }} ref={printRef} id="print-container">
+                <ReportContent isPrint />
+            </div>
+
+            {/* Preview Modal */}
+            <AnimatePresence>
+                {isPreviewOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4 no-print">
+                        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white w-full max-w-5xl h-[95vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+                                <h3 className="font-black text-slate-900 uppercase tracking-tight">Visualização de Impressão</h3>
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={handleDownload} disabled={isDownloading}>
+                                        <Download size={14} className="mr-2" /> Baixar PDF
+                                    </Button>
+                                    <button onClick={() => setIsPreviewOpen(false)} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-auto p-4 md:p-12 bg-slate-100/30">
+                                <div className="bg-white shadow-2xl mx-auto w-[850px] min-h-[1100px] border border-slate-200">
+                                    <ReportContent isPrint />
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+};
+

@@ -1,0 +1,185 @@
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { UserProfile } from '../types';
+
+interface AuthContextType {
+  user: User | null;
+  profile: UserProfile | null;
+  isAdmin: boolean;
+  plansConfig: any;
+  loading: boolean;
+  signInWithGoogle: () => Promise<void>;
+  signInWithEmail: (email: string, pass: string) => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  updateEmail: (email: string) => Promise<void>;
+  updatePassword: (password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [plansConfig, setPlansConfig] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // System plans config is fetched globally but only if user exists
+  useEffect(() => {
+    if (!user) {
+      setPlansConfig(null);
+      return;
+    }
+
+    const path = 'system_configs/plans_config';
+    const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), (docSnap) => {
+      if (docSnap.exists()) {
+        setPlansConfig(docSnap.data().plans);
+      }
+    }, (error) => {
+      console.error("Error listening to plans config:", error);
+      handleFirestoreError(error, OperationType.GET, path);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      if (user) {
+        const profileRef = doc(db, 'userProfiles', user.uid);
+        
+        // Use onSnapshot for real-time updates
+        const unsubscribeProfile = onSnapshot(profileRef, async (profileDoc) => {
+          if (profileDoc.exists()) {
+            const data = profileDoc.data() as UserProfile;
+            
+            // Normalize plan fields
+            if (!data.planId && (data as any).plan) {
+                data.planId = (data as any).plan;
+            }
+            if (data.planId) {
+                data.planId = data.planId.toLowerCase();
+                if (data.planId === 'consultoria') data.planId = 'premium';
+            }
+            
+            // Auto-elevate admin based on email
+            if (user.email === 'fluxointeligente.gestao@gmail.com' && data.role !== 'admin') {
+               await updateDoc(profileRef, { role: 'admin' });
+               data.role = 'admin';
+            }
+            
+            setProfile(data);
+          } else {
+            // New user setup
+            const role = user.email === 'fluxointeligente.gestao@gmail.com' ? 'admin' : 'client';
+            const newProfile: UserProfile = {
+              uid: user.uid,
+              name: user.displayName || 'Usuário',
+              email: user.email || '',
+              role: role,
+              createdAt: serverTimestamp(),
+            };
+            await setDoc(profileRef, newProfile);
+            setProfile(newProfile);
+          }
+          setLoading(false);
+        }, (error) => {
+          console.error("Error listening to profile:", error);
+          handleFirestoreError(error, OperationType.GET, `userProfiles/${user.uid}`);
+          setLoading(false);
+        });
+
+        return () => unsubscribeProfile();
+      } else {
+        setProfile(null);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const signInWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      console.log('Attempting Google Sign-In...');
+      const result = await signInWithPopup(auth, provider);
+      console.log('Google Sign-In successful for user:', result.user.email);
+    } catch (error: any) {
+      console.error('Google Sign-In error:', error.code, error.message);
+    }
+  };
+
+  const signInWithEmail = async (email: string, pass: string) => {
+    try {
+      console.log('Attempting Email Sign-In for:', email);
+      const result = await signInWithEmailAndPassword(auth, email, pass);
+      console.log('Email Sign-In successful for user:', result.user.email);
+    } catch (error: any) {
+      console.error('Email Sign-In error:', error.code, error.message);
+      throw error;
+    }
+  };
+
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!user) return;
+    const profilePath = `userProfiles/${user.uid}`;
+    try {
+      await setDoc(doc(db, 'userProfiles', user.uid), updates, { merge: true });
+      setProfile(prev => prev ? { ...prev, ...updates } : null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, profilePath);
+      throw error;
+    }
+  };
+
+  const updateEmail = async (newEmail: string) => {
+    const { updateEmail: fbUpdateEmail } = await import('firebase/auth');
+    if (!auth.currentUser) return;
+    try {
+      await fbUpdateEmail(auth.currentUser, newEmail);
+      await updateProfile({ email: newEmail });
+    } catch (error) {
+      console.error('Update email error:', error);
+      throw error;
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { updatePassword: fbUpdatePassword } = await import('firebase/auth');
+    if (!auth.currentUser) return;
+    try {
+      await fbUpdatePassword(auth.currentUser, newPassword);
+    } catch (error) {
+      console.error('Update password error:', error);
+      throw error;
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await fbSignOut(auth);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  const isAdmin = profile?.role === 'admin' || user?.email === 'fluxointeligente.gestao@gmail.com';
+
+  return (
+    <AuthContext.Provider value={{ user, profile, isAdmin, plansConfig, loading, signInWithGoogle, signInWithEmail, updateProfile, updateEmail, updatePassword, signOut }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+}

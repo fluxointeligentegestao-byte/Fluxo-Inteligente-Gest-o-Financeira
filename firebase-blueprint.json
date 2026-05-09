@@ -1,0 +1,141 @@
+{
+  "entities": {
+    "userProfile": {
+      "title": "User Profile",
+      "description": "Extended user data including roles and subscription info.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "client"] },
+        "planId": { "type": "string" },
+        "companyName": { "type": "string" },
+        "status": { "type": "string", "enum": ["Ativo", "Pendente", "Inativo"] },
+        "fcmTokens": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "role", "email"]
+    },
+    "plan": {
+      "title": "Service Plan",
+      "description": "Details of BPO service plans.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "features": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "report": {
+      "title": "Financial Report",
+      "description": "Financial data and insights shared with clients.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "status": { "type": "string", "enum": ["draft", "published"] },
+        "period": { "type": "string" },
+        "url": { "type": "string", "format": "uri" },
+        "documents": { 
+          "type": "array", 
+          "items": { 
+            "type": "object", 
+            "properties": {
+              "name": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
+        },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "document": {
+      "title": "Client Document",
+      "description": "Files uploaded by clients for BPO processing.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "name": { "type": "string" },
+        "url": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "processed", "rejected"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "reminder": {
+      "title": "Reminder",
+      "description": "Deadlines and notifications for clients or admins.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "dueDate": { "type": "string", "format": "date-time" },
+        "isCompleted": { "type": "boolean" },
+        "level": { "type": "string", "enum": ["info", "warning", "urgent"] }
+      }
+    },
+    "message": {
+      "title": "Support Message",
+      "description": "Real-time communication between client and BPO advisor.",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "financialEntry": {
+      "title": "Financial Entry",
+      "description": "A single entry in the monthly financial agenda.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["pagar", "receber"] },
+        "category": { "type": "string" },
+        "value": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pago", "Parcial", "Recebido", "Vencido", "Pendente"] },
+        "observation": { "type": "string" },
+        "clientId": { "type": "string" },
+        "month": { "type": "string", "description": "Format: YYYY-MM" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["date", "description", "type", "value", "status", "clientId", "month"]
+    },
+    "payment": {
+      "title": "Client Subscription Payment",
+      "description": "Tracking of BPO service monthly payments from clients.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "month": { "type": "string", "description": "Format: YYYY-MM" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pago", "pendente"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "month", "amount", "status"]
+    }
+  },
+  "firestore": {
+    "/userProfiles/{uid}": { "schema": "userProfile", "description": "Client and Admin profiles" },
+    "/plans/{planId}": { "schema": "plan", "description": "Available service plans" },
+    "/reports/{reportId}": { "schema": "report", "description": "Financial reports for clients" },
+    "/clientDocuments/{docId}": { "schema": "document", "description": "Uploaded documents from clients" },
+    "/reminders/{reminderId}": { "schema": "reminder", "description": "Tasks and deadlines" },
+    "/channels/{channelId}/messages/{messageId}": { "schema": "message", "description": "Chat history" },
+    "/financialAgenda/{clientId}/entries/{entryId}": { "schema": "financialEntry", "description": "Entries for the monthly agenda" },
+    "/payments/{paymentId}": { "schema": "payment", "description": "Monthly subscription payments from clients" },
+    "/system_configs/{configId}": { "schema": "object", "description": "System-wide configurations" }
+  }
+}

@@ -1,0 +1,143 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAdmin() {
+      // Identity lookup from the source of truth
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    // --- Validation Blueprints ---
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['uid', 'name', 'email', 'role', 'createdAt']) &&
+             data.keys().size() >= 5 &&
+             data.uid == request.auth.uid &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ['admin', 'client'] &&
+             data.createdAt == request.time;
+    }
+
+    function isValidReport(data) {
+      return data.keys().hasAll(['clientId', 'title', 'status', 'period', 'revenue', 'expenses', 'createdAt']) &&
+             data.clientId is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.status in ['draft', 'published'] &&
+             data.revenue is number &&
+             data.expenses is number &&
+             data.createdAt == request.time;
+    }
+
+    function isValidDocument(data) {
+      return data.keys().hasAll(['clientId', 'fileName', 'fileUrl', 'type', 'status', 'uploadedAt']) &&
+             data.clientId == request.auth.uid &&
+             data.fileName is string && data.fileName.size() <= 255 &&
+             data.status in ['pending', 'processed', 'rejected'] &&
+             data.uploadedAt == request.time;
+    }
+
+    // --- Match Blocks ---
+
+    // Connection Test
+    match /test/connection {
+      allow get: if isSignedIn();
+    }
+
+    match /userProfiles/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow list: if isAdmin();
+      
+      allow create: if isSignedIn() && request.auth.uid == uid && isValidUserProfile(incoming());
+      
+      allow update: if (
+        isSignedIn() && (
+          // Client updating self
+          (request.auth.uid == uid && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['name', 'companyName']) &&
+           incoming().name is string && incoming().name.size() <= 100) ||
+          // Admin updating anyone
+          isAdmin()
+        )
+      );
+    }
+
+    match /plans/{planId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow get: if isSignedIn() && (existing().clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      
+      allow create: if isAdmin() && isValidReport(incoming());
+      allow update: if isAdmin() && isValidReport(incoming());
+      allow delete: if isAdmin();
+    }
+
+    match /documents/{docId} {
+      allow get: if isSignedIn() && (existing().clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      
+      allow create: if isSignedIn() && isValidDocument(incoming());
+      
+      allow update: if (
+        (isAdmin()) ||
+        (isSignedIn() && existing().clientId == request.auth.uid && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['fileName']) &&
+         incoming().fileName is string && incoming().fileName.size() <= 255)
+      );
+      
+      allow delete: if isAdmin() || (isSignedIn() && existing().clientId == request.auth.uid);
+    }
+
+    match /reminders/{reminderId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin() || (isSignedIn() && incoming().userId == request.auth.uid);
+      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    match /channels/{channelId} {
+      function isParticipant() {
+        return request.auth.uid in get(/databases/$(database)/documents/channels/$(channelId)).data.participants;
+      }
+
+      allow read: if isSignedIn() && (isParticipant() || isAdmin());
+      allow create: if isAdmin(); // Admin starts channels
+      
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && (get(/databases/$(database)/documents/channels/$(channelId)).data.participants.hasAny([request.auth.uid]) || isAdmin());
+        allow create: if isSignedIn() && (isParticipant() || isAdmin()) && incoming().senderId == request.auth.uid;
+      }
+    }
+  }
+}
