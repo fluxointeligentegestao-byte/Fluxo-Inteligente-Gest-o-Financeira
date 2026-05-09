@@ -157,7 +157,7 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
 
                                 <div className="mt-6 pt-6 border-t border-slate-50">
                                     <div className="flex items-baseline gap-1">
-                                        <span className="text-4xl font-black text-slate-900 tracking-tighter">R${plan.price}</span>
+                                        <span className="text-4xl font-black text-slate-900 tracking-tighter">{formatCurrency(plan.price)}</span>
                                         <span className="text-slate-400 text-xs font-bold uppercase tracking-tight">/mês</span>
                                     </div>
                                     <p className="text-[9px] font-black text-primary uppercase tracking-widest mt-2">{plan.limit}</p>

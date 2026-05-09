@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
-import { cn } from '../lib/utils';
+import { cn, formatCurrency } from '../lib/utils';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -421,27 +421,27 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
                                         <div>
                                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Saldo Sistema (Início)</p>
                                             <div className="text-sm font-black text-slate-700">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.initialBalance)}
+                                                {formatCurrency(summary.initialBalance)}
                                             </div>
                                             <p className="text-[9px] font-bold text-slate-300 mt-1">{safeDate(summary.initialDate)}</p>
                                         </div>
                                         <div>
                                             <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Saldo Sistema (Final)</p>
                                             <div className="text-sm font-black text-slate-900">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.finalBalance)}
+                                                {formatCurrency(summary.finalBalance)}
                                             </div>
                                             <p className="text-[9px] font-bold text-slate-300 mt-1">{safeDate(summary.finalDate)}</p>
                                         </div>
                                         <div className="text-emerald-600">
                                             <p className="text-[8px] font-black text-emerald-900/40 uppercase tracking-[0.2em] mb-1 flex items-center gap-1"> <ArrowUpRight size={10} /> Entradas</p>
                                             <div className="text-sm font-black">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.totalIn)}
+                                                {formatCurrency(summary.totalIn)}
                                             </div>
                                         </div>
                                         <div className="text-rose-600">
                                             <p className="text-[8px] font-black text-rose-900/40 uppercase tracking-[0.2em] mb-1 flex items-center gap-1"> <ArrowDownLeft size={10} /> Saídas</p>
                                             <div className="text-sm font-black">
-                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.totalOut)}
+                                                {formatCurrency(summary.totalOut)}
                                             </div>
                                         </div>
                                     </div>
@@ -471,11 +471,8 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
                                         <div className="pt-2 border-t border-slate-100">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-[9px] font-bold text-slate-400 uppercase">Diferença:</span>
-                                                <span className={cn(
-                                                    "text-xs font-black",
-                                                    Math.abs(summary.finalBalance - summary.statementBalance) < 0.01 ? "text-emerald-600" : "text-rose-600"
-                                                )}>
-                                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(summary.finalBalance - summary.statementBalance)}
+                                                <span className="text-xs font-black">
+                                                    {formatCurrency(summary.finalBalance - summary.statementBalance)}
                                                 </span>
                                             </div>
                                             {Math.abs(summary.finalBalance - summary.statementBalance) < 0.01 ? (
@@ -509,7 +506,7 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
                                                     "text-[11px] font-black",
                                                     t.type === 'receita' ? "text-emerald-600" : "text-rose-600"
                                                 )}>
-                                                    {t.type === 'receita' ? '+' : '-'} {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.settlement?.paidValue || 0)}
+                                                    {t.type === 'receita' ? '+' : '-'} {formatCurrency(t.settlement?.paidValue || 0)}
                                                 </span>
                                             </div>
                                         )) : (
@@ -533,7 +530,7 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
                     <div className="flex-1 text-center md:text-left">
                         <h3 className="text-xl font-black uppercase tracking-tight mb-2">Saldos 100% Conciliados</h3>
                         <p className="text-emerald-100/60 text-sm leading-relaxed max-w-2xl">
-                            O total geral de todas as contas é {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalFinal)}. 
+                            O total geral de todas as contas é {formatCurrency(totalFinal)}. 
                             Esta demonstração profissional certifica que todos os lançamentos batem com as movimentações bancárias reais.
                         </p>
                     </div>
@@ -661,19 +658,19 @@ const ReportDocument = ({
                         <div className="grid grid-cols-4 gap-4">
                             <div>
                                 <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Inicial</p>
-                                <p className="text-xs font-black text-slate-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.initialBalance)}</p>
+                                <p className="text-xs font-black text-slate-900">{formatCurrency(bank.initialBalance)}</p>
                             </div>
                             <div>
                                 <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Entradas</p>
-                                <p className="text-xs font-black text-emerald-600">+{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.totalIn)}</p>
+                                <p className="text-xs font-black text-emerald-600">+{formatCurrency(bank.totalIn)}</p>
                             </div>
                             <div>
                                 <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Saídas</p>
-                                <p className="text-xs font-black text-rose-600">-{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.totalOut)}</p>
+                                <p className="text-xs font-black text-rose-600">-{formatCurrency(bank.totalOut)}</p>
                             </div>
                             <div className="text-right">
                                 <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Final</p>
-                                <p className="text-xs font-black text-slate-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.finalBalance)}</p>
+                                <p className="text-xs font-black text-slate-900">{formatCurrency(bank.finalBalance)}</p>
                             </div>
                         </div>
                     </div>
@@ -706,7 +703,7 @@ const ReportDocument = ({
                                             "py-2 px-4 text-right font-black",
                                             t.type === 'receita' ? "text-emerald-600" : "text-rose-600"
                                         )}>
-                                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(t.settlement?.paidValue || 0)}
+                                            {formatCurrency(t.settlement?.paidValue || 0)}
                                         </td>
                                     </tr>
                                 ))}
@@ -725,11 +722,11 @@ const ReportDocument = ({
                         <div className="space-y-3">
                             <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500 font-bold">Saldo Final no Sistema:</span>
-                                <span className="font-black text-slate-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.finalBalance)}</span>
+                                <span className="font-black text-slate-900">{formatCurrency(bank.finalBalance)}</span>
                             </div>
                             <div className="flex justify-between items-center text-xs">
                                 <span className="text-slate-500 font-bold">Saldo no Extrato Bancário:</span>
-                                <span className="font-black text-slate-900">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.statementBalance)}</span>
+                                <span className="font-black text-slate-900">{formatCurrency(bank.statementBalance)}</span>
                             </div>
                             <div className={cn(
                                 "flex justify-between items-center p-3 rounded-xl",
@@ -737,7 +734,7 @@ const ReportDocument = ({
                             )}>
                                 <span className="text-[10px] font-black uppercase tracking-widest">Diferença Apurada:</span>
                                 <span className="text-sm font-black underline decoration-2 underline-offset-4">
-                                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(bank.finalBalance - bank.statementBalance)}
+                                    {formatCurrency(bank.finalBalance - bank.statementBalance)}
                                 </span>
                             </div>
                         </div>

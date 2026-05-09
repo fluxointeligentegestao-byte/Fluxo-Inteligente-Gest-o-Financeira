@@ -1030,8 +1030,17 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
 
                                 {/* Classificação */}
                                 <div className="space-y-4 md:col-span-1 border-r border-slate-50 pr-6">
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Favorito / Cliente</label>
+                                    <div className="space-y-1.5 text-left">
+                                        <div className="flex items-center justify-between ml-1">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Favorecido / Cliente</label>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setIsPartnerModalOpen(true)}
+                                                className="text-[9px] font-black text-primary uppercase tracking-widest hover:underline flex items-center gap-1"
+                                            >
+                                                <Plus size={10} /> Cadastrar Novo
+                                            </button>
+                                        </div>
                                         <select 
                                             value={formData.partnerName || ''}
                                             onChange={(e) => {

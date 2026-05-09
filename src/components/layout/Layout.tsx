@@ -164,7 +164,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
                 onClick={() => signOut()}
                 className="w-full py-4 bg-white/5 text-slate-400 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] hover:bg-white/10 transition-all"
              >
-                Sair da Conta
+                Sair / Trocar Conta
              </button>
           </div>
           <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.3em]">
@@ -212,6 +212,17 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
               {!item.hasAccess && <Lock size={14} className="text-slate-200" />}
             </button>
           ))}
+
+          {/* Separador e Botão Sair no Menu Principal */}
+          <div className="pt-4 mt-2 border-t border-slate-50">
+            <button
+              onClick={() => signOut()}
+              className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-all duration-200 group"
+            >
+              <LogOut size={20} className="text-slate-400 group-hover:text-rose-500 transition-colors" />
+              <span className="text-sm tracking-tight flex-1 text-left font-bold">Sair / Trocar Conta</span>
+            </button>
+          </div>
         </nav>
 
         <div className="p-6">
@@ -245,7 +256,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
                   onClick={signOut}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all font-bold text-xs uppercase tracking-widest"
                 >
-                    <LogOut size={14} /> Sair da Conta
+                    <LogOut size={14} /> Sair / Trocar Conta
                 </button>
            </div>
         </div>
@@ -300,6 +311,16 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
                           </button>
                       ))}
                   </nav>
+                  
+                  <div className="mt-auto pt-6 border-t border-slate-100">
+                      <button 
+                        onClick={() => signOut()}
+                        className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-rose-500 hover:bg-rose-50 transition-all font-bold"
+                      >
+                          <LogOut size={20} /> 
+                          <span>Sair / Trocar Conta</span>
+                      </button>
+                  </div>
               </motion.div>
           </div>
       )}
