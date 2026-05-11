@@ -278,8 +278,15 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                                                         {client.name?.charAt(0)}
                                                     </div>
                                                     <div>
-                                                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">{client.name || 'Sem Nome'}</h4>
+                                                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">
+                                                            {client.companyName || client.name || 'Sem Nome'}
+                                                        </h4>
                                                         <div className="flex items-center gap-2 mt-1">
+                                                            {client.companyName && client.name && (
+                                                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mr-1">
+                                                                    {client.name} • 
+                                                                </span>
+                                                            )}
                                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-2 py-0.5 bg-slate-100 rounded-md">
                                                                 {client.planId || 'Sem Plano'}
                                                             </span>

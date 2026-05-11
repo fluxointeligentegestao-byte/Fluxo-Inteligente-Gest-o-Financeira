@@ -78,6 +78,9 @@ interface FinancialTransaction {
         bankId: string;
         paymentMethodId: string;
         settledAt: any;
+        interest?: number;
+        penalty?: number;
+        discount?: number;
     };
     createdAt: any;
 }
@@ -852,12 +855,19 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                         </div>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <span className={cn(
-                                            "text-xs font-black",
-                                            t.type === 'receita' ? "text-emerald-600" : "text-rose-600"
-                                        )}>
-                                            {t.type === 'receita' ? '+' : '-'} {formatCurrency(t.originalValue)}
-                                        </span>
+                                        <div className="flex flex-col items-end">
+                                            <span className={cn(
+                                                "text-xs font-black",
+                                                t.type === 'receita' ? "text-emerald-600" : "text-rose-600"
+                                            )}>
+                                                {t.type === 'receita' ? '+' : '-'} {formatCurrency(t.settlement?.paidValue || t.originalValue)}
+                                            </span>
+                                            {t.settlement && (t.settlement.interest || t.settlement.penalty || t.settlement.discount) && (
+                                                <span className="text-[7px] font-bold text-slate-400 uppercase leading-none mt-1">
+                                                    Original: {formatCurrency(t.originalValue)}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         {(() => {

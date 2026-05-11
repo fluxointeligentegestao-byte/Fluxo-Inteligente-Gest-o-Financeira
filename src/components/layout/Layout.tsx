@@ -65,7 +65,9 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
             <option value="">Selecionar Empresa...</option>
             {clients.length === 0 && <option disabled>Nenhuma empresa encontrada</option>}
             {clients.map(client => (
-              <option key={client.id} value={client.id}>{client.name}</option>
+              <option key={client.id} value={client.id}>
+                {client.companyName ? `${client.companyName} (${client.name})` : client.name}
+              </option>
             ))}
           </select>
           <div className="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400">

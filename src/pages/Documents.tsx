@@ -36,7 +36,6 @@ import {
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { base64ToURL, base64ToBlob, downloadFile } from '../lib/pdfUtils';
 import { motion, AnimatePresence } from 'motion/react';
-import { Download } from 'lucide-react';
 
 interface ClientDocument {
     id: string;
@@ -525,22 +524,11 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
                             <div className="flex-1 bg-slate-50 p-4">
                                 {previewUrl ? (
                                     <div className="w-full h-full relative border border-slate-200 rounded-2xl overflow-hidden shadow-inner bg-white">
-                                        <object 
-                                            data={previewUrl} 
-                                            type="application/pdf"
-                                            className="w-full h-full"
-                                        >
-                                            <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
-                                                <FileText size={48} className="mb-4 opacity-20" />
-                                                <p className="text-sm font-bold uppercase tracking-tight mb-4">O visualizador nativo foi bloqueado pelo seu navegador</p>
-                                                <Button 
-                                                    onClick={() => window.open(previewUrl, '_blank')}
-                                                    className="font-black uppercase text-[10px] tracking-widest px-6"
-                                                >
-                                                    Abrir em Nova Aba
-                                                </Button>
-                                            </div>
-                                        </object>
+                                        <iframe 
+                                            src={previewUrl} 
+                                            className="w-full h-full border-none"
+                                            title="PDF Preview"
+                                        />
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">

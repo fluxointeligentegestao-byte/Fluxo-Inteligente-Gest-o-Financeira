@@ -56,6 +56,9 @@ interface SystemTransaction {
         paymentDate: string;
         paidValue: number;
         isConciled?: boolean;
+        interest?: number;
+        penalty?: number;
+        discount?: number;
     };
 }
 
@@ -294,12 +297,13 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
         newBankTrans.forEach(bt => {
             if (bt.conciliatedId) return;
 
-            // Simple match: same type, same value, same date (or close)
-            const match = newSystemTrans.find(st => 
-                st.type === bt.type && 
-                Math.abs(st.originalValue - bt.value) < 0.01 &&
-                st.status === 'Pendente' // Only match with pending
-            );
+            // Simple match: prioritized already settled paidValue, fallback to originalValue
+            const match = newSystemTrans.find(st => {
+                const effectiveValue = st.settlement?.paidValue || st.originalValue || 0;
+                return st.type === bt.type && 
+                    Math.abs(effectiveValue - bt.value) < 0.01 &&
+                    st.status !== 'Conciliado' && !st.settlement?.isConciled; // Only match if not yet conciled
+            });
 
             if (match) {
                 bt.conciliatedId = match.id;
@@ -467,6 +471,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
     const toggleConciliation = async (st: SystemTransaction) => {
         if (!selectedBankId) return;
         const isReconciled = st.status === 'Conciliado' || st.settlement?.isConciled;
+        const effectiveValueForSettlement = st.settlement?.paidValue || st.originalValue;
         
         try {
             const transRef = doc(db, 'transactions', st.id);
@@ -482,7 +487,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     settlement: {
                         bankId: selectedBankId,
                         paymentDate: selectedDate,
-                        paidValue: st.originalValue,
+                        paidValue: effectiveValueForSettlement,
                         settledAt: serverTimestamp(),
                         isConciled: true
                     },
@@ -751,27 +756,28 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     <div className="flex-1 overflow-y-auto no-scrollbar bg-slate-50/20">
                         <table className="w-full text-left table-fixed border-collapse">
                             <tbody className="divide-y divide-slate-100">
-                                {filteredTransactions.map((st) => {
-                                    const isConciled = st.status === 'Conciliado' || st.settlement?.isConciled;
-                                    const isSelected = selectedRows.includes(st.id);
-                                    
-                                    return (
-                                        <tr 
-                                            key={st.id} 
-                                            className={cn(
-                                                "text-[10px] transition-colors hover:bg-slate-50/80 group",
-                                                isConciled ? "bg-emerald-50/30" : "bg-white",
-                                                isSelected && "bg-primary/5"
-                                            )}
-                                        >
-                                            <td className="w-10 py-2.5 px-4 text-center">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={isSelected}
-                                                    onChange={() => toggleRowSelection(st.id, st.originalValue, st.type)}
-                                                    className="w-3.5 h-3.5 rounded border-slate-200 text-primary focus:ring-primary/20"
-                                                />
-                                            </td>
+                                        {filteredTransactions.map((st) => {
+                                            const isConciled = st.status === 'Conciliado' || st.settlement?.isConciled;
+                                            const isSelected = selectedRows.includes(st.id);
+                                            const effectiveValue = st.settlement?.paidValue || st.originalValue || 0;
+                                            
+                                            return (
+                                                <tr 
+                                                    key={st.id} 
+                                                    className={cn(
+                                                        "text-[10px] transition-colors hover:bg-slate-50/80 group",
+                                                        isConciled ? "bg-emerald-50/30" : "bg-white",
+                                                        isSelected && "bg-primary/5"
+                                                    )}
+                                                >
+                                                    <td className="w-10 py-2.5 px-4 text-center">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={isSelected}
+                                                            onChange={() => toggleRowSelection(st.id, effectiveValue, st.type)}
+                                                            className="w-3.5 h-3.5 rounded border-slate-200 text-primary focus:ring-primary/20"
+                                                        />
+                                                    </td>
                                             <td className="w-24 py-2.5 px-4 font-bold text-slate-400">#{st.id.substring(0, 8)}</td>
                                             <td className="w-32 py-2.5 px-4 font-black text-slate-500 uppercase tracking-tighter">Financeiro</td>
                                             <td className="w-24 py-2.5 px-4 text-center">
@@ -800,10 +806,27 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                                 {st.partnerName || st.description}
                                             </td>
                                             <td className={cn(
-                                                "w-32 py-2.5 px-4 text-right font-black",
+                                                "w-32 py-2.5 px-4 text-right font-black flex flex-col items-end gap-0.5",
                                                 st.type === 'receita' ? 'text-emerald-600' : 'text-rose-600'
                                             )}>
-                                                {formatCurrency(st.originalValue)}
+                                                <span 
+                                                    className="cursor-help"
+                                                    title={st.settlement ? `Original: ${formatCurrency(st.originalValue)}${st.settlement.interest ? `\nJuros: ${formatCurrency(st.settlement.interest)}` : ''}${st.settlement.penalty ? `\nMulta: ${formatCurrency(st.settlement.penalty)}` : ''}${st.settlement.discount ? `\nDesconto: ${formatCurrency(st.settlement.discount)}` : ''}` : undefined}
+                                                >
+                                                    {formatCurrency(effectiveValue)}
+                                                </span>
+                                                {st.settlement && (st.settlement.interest || st.settlement.penalty || st.settlement.discount) && (
+                                                    <div className="flex flex-col items-end">
+                                                        <span className="text-[7px] font-black text-slate-400 uppercase leading-none bg-slate-100 px-1 py-0.5 rounded">
+                                                            C/ Ajustes
+                                                        </span>
+                                                        <div className="flex gap-1 mt-0.5">
+                                                            {st.settlement.interest ? <span className="text-[6px] text-amber-600 font-bold uppercase">Juros</span> : null}
+                                                            {st.settlement.penalty ? <span className="text-[6px] text-rose-500 font-bold uppercase">Multa</span> : null}
+                                                            {st.settlement.discount ? <span className="text-[6px] text-emerald-500 font-bold uppercase">Desc</span> : null}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="w-32 py-2.5 px-4 font-bold text-slate-400">
                                                 {new Date(st.dueDate).toLocaleDateString('pt-BR')}
@@ -916,22 +939,11 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                 <div className="flex-1 bg-slate-50 p-4">
                                     {viewingPdfUrl ? (
                                         <div className="w-full h-full relative border border-slate-200 rounded-2xl overflow-hidden shadow-inner bg-white">
-                                            <object 
-                                                data={viewingPdfUrl} 
-                                                type="application/pdf"
-                                                className="w-full h-full"
-                                            >
-                                                <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
-                                                    <FileText size={48} className="mb-4 opacity-20" />
-                                                    <p className="text-sm font-bold uppercase tracking-tight mb-4">O visualizador nativo foi bloqueado pelo seu navegador</p>
-                                                    <Button 
-                                                        onClick={() => window.open(viewingPdfUrl, '_blank')}
-                                                        className="font-black uppercase text-[10px] tracking-widest px-6"
-                                                    >
-                                                        Abrir em Nova Aba
-                                                    </Button>
-                                                </div>
-                                            </object>
+                                            <iframe 
+                                                src={viewingPdfUrl} 
+                                                className="w-full h-full border-none"
+                                                title="PDF Preview"
+                                            />
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
