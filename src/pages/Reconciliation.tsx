@@ -142,16 +142,18 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
             let runningBalance = selectedBank?.initialBalance || 0;
             const initDate = selectedBank?.initialBalanceDate || '1900-01-01';
 
-            // Get all transactions settled BEFORE selectedDate and AFTER/ON initialBalanceDate
-            const qAllBefore = query(
+            // Get all transactions for the client that are NOT yet conciled 
+            // OR were settled on the selected bank
+            const qAll = query(
                 collection(db, 'transactions'),
-                where('clientId', '==', selectedClientId),
-                where('status', 'in', ['Pago', 'Recebido'])
+                where('clientId', '==', selectedClientId)
             );
-            const snapAll = await getDocs(qAllBefore);
-            const allSettled = snapAll.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const snapAll = await getDocs(qAll);
+            const allTrans = snapAll.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemTransaction));
 
-            const beforeDate = allSettled.filter(t => 
+            // Summary calculation
+            const beforeDate = allTrans.filter(t => 
+                (t.status === 'Pago' || t.status === 'Recebido') &&
                 t.settlement?.bankId === selectedBankId && 
                 t.settlement?.paymentDate < selectedDate &&
                 t.settlement?.paymentDate >= initDate
@@ -162,41 +164,32 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 runningBalance += (t.type === 'receita' ? val : -val);
             });
 
-            // 2. Get transactions for the SPECIFIC day
-            // We search for transactions with dueDate on this day OR already settled on this day
-            const qToday = query(
-                collection(db, 'transactions'),
-                where('clientId', '==', selectedClientId),
-                where('dueDate', '==', selectedDate)
-            );
-            
-            const snapToday = await getDocs(qToday);
-            const listToday = snapToday.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemTransaction));
-            
-            // Also include anything settled today regardless of dueDate
-            const settledToday = allSettled.filter(t => 
+            // Transactions to show in the grid:
+            // 1. Pending transactions (not settled)
+            // 2. Transactions settled on this bank (conciled or not)
+            const filteredForGrid = allTrans.filter(t => {
+                const isPending = t.status === 'Pendente';
+                const isSettledInThisBank = t.settlement?.bankId === selectedBankId;
+                
+                // If it's settled in ANOTHER bank, don't show it here
+                if (t.settlement?.bankId && t.settlement.bankId !== selectedBankId) {
+                    return false;
+                }
+
+                // Show if it's pending OR settled in this bank
+                return isPending || isSettledInThisBank;
+            });
+
+            // Sort by due date
+            filteredForGrid.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+            setSystemTransactions(filteredForGrid);
+
+            // 3. Calculate Today's Summary
+            const settledToday = allTrans.filter(t => 
                 t.settlement?.paymentDate === selectedDate && 
                 t.settlement?.bankId === selectedBankId
             );
-            
-            // Merge and dedup
-            const combined = [...listToday];
-            settledToday.forEach(st => {
-                if (!combined.find(c => c.id === st.id)) {
-                    combined.push(st as SystemTransaction);
-                }
-            });
-
-            // Filter for UI
-            const filteredSystem = combined.filter(t => {
-                const trans = t as any;
-                if (['Pago', 'Recebido'].includes(trans.status)) {
-                    return trans.settlement?.bankId === selectedBankId;
-                }
-                return true; 
-            });
-
-            setSystemTransactions(filteredSystem);
 
             // 3. Calculate Today's Summary
             let inflow = 0;
@@ -538,9 +531,12 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
     };
 
     const filteredTransactions = systemTransactions.filter(st => {
+        const isConciled = st.status === 'Conciliado' || st.settlement?.isConciled;
+        const isPending = st.status === 'Pendente' || ((st.status === 'Pago' || st.status === 'Recebido') && !st.settlement?.isConciled);
+
         const matchesType = filterType === 'all' || 
-            (filterType === 'conciliated' && (st.status === 'Conciliado' || st.settlement?.isConciled)) ||
-            (filterType === 'pending' && st.status === 'Pendente');
+            (filterType === 'conciliated' && isConciled) ||
+            (filterType === 'pending' && isPending);
         
         const matchesCategory = filterCategory === 'all' || st.type === filterCategory;
         
