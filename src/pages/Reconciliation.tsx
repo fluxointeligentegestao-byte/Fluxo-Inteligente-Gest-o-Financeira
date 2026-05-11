@@ -430,7 +430,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
     };
 
     const handleUnreconcile = async (transaction: SystemTransaction) => {
-        if (!confirm('Deseja desconciliar este título? Ele voltará para o status Pendente e o saldo do banco será revertido.')) return;
+        if (!confirm('Deseja desconciliar este título? Ele continuará como liquidado no sistema, mas deixará de afetar o saldo do banco.')) return;
         
         try {
             await runTransaction(db, async (txn) => {
@@ -449,12 +449,11 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 }
 
                 txn.update(transRef, {
-                    status: 'Pendente',
-                    settlement: null,
+                    'settlement.isConciled': false,
                     updatedAt: serverTimestamp()
                 });
             });
-            alert('Título desconciliado com sucesso!');
+            alert('Título desconciliado com sucesso! Ele permanece como liquidado.');
         } catch (error) {
             console.error("Error unreconciling:", error);
             alert('Erro ao desconciliar.');
@@ -528,24 +527,36 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 const adjustment = st.type === 'receita' ? effectiveValueForSettlement : -effectiveValueForSettlement;
 
                 if (isReconciled) {
+                    // Se já estava conciliado, apenas remove o flag de conciliação e ajusta o saldo do banco
+                    // Mantém a baixa (status Recebido/Pago e os dados do settlement)
                     txn.update(transRef, {
-                        status: 'Pendente',
-                        settlement: null,
+                        'settlement.isConciled': false,
                         updatedAt: serverTimestamp()
                     });
                     txn.update(bankRef, { balance: currentBalance - adjustment });
                 } else {
-                    txn.update(transRef, {
-                        status: st.type === 'receita' ? 'Recebido' : 'Pago',
-                        settlement: {
-                            bankId: selectedBankId,
-                            paymentDate: endDate,
-                            paidValue: effectiveValueForSettlement,
-                            settledAt: serverTimestamp(),
-                            isConciled: true
-                        },
-                        updatedAt: serverTimestamp()
-                    });
+                    // Se não estava conciliado, marca como conciliado.
+                    // Se já estava baixado (settlement existe), preservamos os dados e só mudamos o flag.
+                    if (st.settlement) {
+                        txn.update(transRef, {
+                            'settlement.isConciled': true,
+                            'settlement.bankId': selectedBankId, // Garante que é o banco selecionado
+                            updatedAt: serverTimestamp()
+                        });
+                    } else {
+                        // Se era Pendente, realiza a baixa e a conciliação simultaneamente
+                        txn.update(transRef, {
+                            status: st.type === 'receita' ? 'Recebido' : 'Pago',
+                            settlement: {
+                                bankId: selectedBankId,
+                                paymentDate: endDate,
+                                paidValue: effectiveValueForSettlement,
+                                settledAt: serverTimestamp(),
+                                isConciled: true
+                            },
+                            updatedAt: serverTimestamp()
+                        });
+                    }
                     txn.update(bankRef, { balance: currentBalance + adjustment });
                 }
             });
@@ -722,6 +733,20 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     </div>
                 </div>
 
+                {/* PDF Statement Action */}
+                {bankStatements.length > 0 && (
+                    <div className="space-y-2 pt-4 border-t border-slate-50">
+                        <Button 
+                            variant="ghost"
+                            onClick={() => setViewingPdf(bankStatements[0].pdfContent)}
+                            className="w-full justify-start gap-3 bg-primary/5 hover:bg-primary/10 text-primary border border-primary/10 py-3 rounded-xl"
+                        >
+                            <Eye size={18} />
+                            <span className="text-[10px] font-black uppercase tracking-tight">Mostrar Extrato PDF</span>
+                        </Button>
+                    </div>
+                )}
+
                 {/* Import section */}
                 <div className="mt-auto pt-6 border-t border-slate-50 space-y-3">
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Importar Extratos</h3>
@@ -794,14 +819,6 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     </div>
 
                     <div className="ml-auto flex items-center gap-2">
-                        {bankStatements.length > 0 && (
-                            <button 
-                                onClick={() => setViewingPdf(bankStatements[0].pdfContent)}
-                                className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 rounded text-[9px] font-black uppercase flex items-center gap-1.5 transition-all hover:bg-primary/20"
-                            >
-                                <Eye size={14} /> Mostrar Extrato PDF
-                            </button>
-                        )}
                     </div>
                 </header>
 
