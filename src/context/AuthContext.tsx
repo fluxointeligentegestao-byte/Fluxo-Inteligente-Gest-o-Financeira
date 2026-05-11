@@ -167,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const isAdmin = profile?.role === 'admin' || user?.email === 'fluxointeligente.gestao@gmail.com';
+  const isAdmin = profile?.role === 'admin' || user?.email?.toLowerCase() === 'fluxointeligente.gestao@gmail.com'.toLowerCase();
 
   return (
     <AuthContext.Provider value={{ user, profile, isAdmin, plansConfig, loading, signInWithGoogle, signInWithEmail, updateProfile, updateEmail, updatePassword, signOut }}>

@@ -76,6 +76,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
   });
 
   const [clients, setClients] = useState<any[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -118,32 +119,45 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
   useEffect(() => {
     if (!showAdminView) return;
 
-    const unsubClients = onSnapshot(query(collection(db, 'userProfiles'), where('role', '==', 'client')), async (snapshot) => {
-        const clientsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log("Dashboard: Subscribing to userProfiles (showAdminView=true)... Admin Email:", user?.email);
+    const unsubClients = onSnapshot(collection(db, 'userProfiles'), async (snapshot) => {
+        console.log(`Dashboard: Fetched ${snapshot.docs.length} total profiles`);
+        const clientsList = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() as any }))
+            .filter(p => {
+                const role = p.role?.toLowerCase() || '';
+                return role === 'client' || role === 'cliente' || !role;
+            });
         
-        // For each client, let's fetch some quick stats
-        const fullClientsList = await Promise.all(clientsList.map(async (client: any) => {
-            // Docs pending
-            const docsQuery = query(collection(db, 'clientDocuments'), where('clientId', '==', client.id), where('status', '==', 'pending'));
-            const docsSnap = await getDocs(docsQuery);
-            
-            // Last report
-            const reportsQuery = query(collection(db, 'reports'), where('clientId', '==', client.id), orderBy('createdAt', 'desc'));
-            const reportsSnap = await getDocs(reportsQuery);
-            const lastReportDate = reportsSnap.docs[0]?.data()?.createdAt?.toDate();
-
-            return {
-                ...client,
-                pendingDocsCount: docsSnap.size,
-                lastReportDate
-            };
-        }));
-
-        setClients(fullClientsList);
+        console.log(`Dashboard: Final client list size: ${clientsList.length}`);
+        // Update basic list first
+        setClients(clientsList);
         setLoading(false);
+
+        // For each client, let's fetch some quick stats separately to not block
+        clientsList.forEach(async (client: any) => {
+            try {
+                // Docs pending
+                const docsQuery = query(collection(db, 'clientDocuments'), where('clientId', '==', client.id), where('status', '==', 'pending'));
+                const docsSnap = await getDocs(docsQuery);
+                
+                // Last report
+                const reportsQuery = query(collection(db, 'reports'), where('clientId', '==', client.id), orderBy('createdAt', 'desc'));
+                const reportsSnap = await getDocs(reportsQuery);
+                const lastReportDate = reportsSnap.docs[0]?.data()?.createdAt?.toDate();
+
+                setClients(prev => prev.map(c => c.id === client.id ? {
+                    ...c,
+                    pendingDocsCount: docsSnap.size,
+                    lastReportDate
+                } : c));
+            } catch (err) {
+                console.error(`Error fetching stats for client ${client.id}:`, err);
+            }
+        });
     }, (error) => {
         console.error("Error listening to clients in Dashboard:", error);
-        handleFirestoreError(error, OperationType.GET, 'userProfiles');
+        handleFirestoreError(error, OperationType.LIST, 'userProfiles');
         setLoading(false);
     });
 
@@ -219,8 +233,10 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                             <div className="relative group">
                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input 
-                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] uppercase font-black outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                    placeholder="Buscar cliente..."
+                                    className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-[10px] uppercase font-black outline-none focus:ring-4 focus:ring-primary/5 transition-all w-full md:w-64"
+                                    placeholder="Buscar empresa..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -236,81 +252,99 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                                     <Users size={48} className="mx-auto mb-4 opacity-20" />
                                     <p className="font-bold text-slate-400">Nenhum cliente cadastrado ainda.</p>
                                 </div>
-                            ) : clients.sort((a,b) => (b.pendingDocsCount || 0) - (a.pendingDocsCount || 0)).map((client) => (
-                                <div 
-                                    key={client.id}
-                                    className="flex flex-col md:flex-row md:items-center justify-between p-5 bg-slate-50/50 border border-slate-50 rounded-2xl hover:border-primary/20 hover:bg-white transition-all group"
-                                >
-                                    <div className="flex items-center gap-4 mb-4 md:mb-0">
-                                        <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-primary font-black text-lg shadow-sm group-hover:scale-105 transition-all">
-                                            {client.name?.charAt(0)}
-                                        </div>
-                                        <div>
-                                            <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">{client.name}</h4>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-2 py-0.5 bg-slate-100 rounded-md">
-                                                    {client.planId || 'Sem Plano'}
-                                                </span>
+                            ) : (
+                                <>
+                                    {clients
+                                        .filter(c => 
+                                            (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                            (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                        )
+                                        .sort((a,b) => (b.pendingDocsCount || 0) - (a.pendingDocsCount || 0)).length === 0 ? (
+                                            <div className="py-12 text-center text-slate-400">
+                                                <p className="text-xs font-bold uppercase tracking-widest">Nenhum resultado para "{searchTerm}"</p>
                                             </div>
-                                        </div>
-                                    </div>
+                                        ) : clients
+                                            .filter(c => 
+                                                (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                                (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
+                                            )
+                                            .sort((a,b) => (b.pendingDocsCount || 0) - (a.pendingDocsCount || 0)).map((client) => (
+                                            <div 
+                                                key={client.id}
+                                                className="flex flex-col md:flex-row md:items-center justify-between p-5 bg-slate-50/50 border border-slate-50 rounded-2xl hover:border-primary/20 hover:bg-white transition-all group"
+                                            >
+                                                <div className="flex items-center gap-4 mb-4 md:mb-0">
+                                                    <div className="w-12 h-12 rounded-2xl bg-white border border-slate-100 flex items-center justify-center text-primary font-black text-lg shadow-sm group-hover:scale-105 transition-all">
+                                                        {client.name?.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">{client.name || 'Sem Nome'}</h4>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-2 py-0.5 bg-slate-100 rounded-md">
+                                                                {client.planId || 'Sem Plano'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
 
-                                    <div className="grid grid-cols-3 gap-2 md:w-auto">
-                                        <div 
-                                            onClick={() => {
-                                                setSelectedClient(client.id, client.name);
-                                                setActiveTab('documents');
-                                            }}
-                                            className={cn(
-                                                "px-3 py-2 rounded-xl text-center border-2 transition-all cursor-pointer",
-                                                client.pendingDocsCount > 0 
-                                                    ? "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100 font-black" 
-                                                    : "bg-white border-slate-50 text-slate-300"
-                                            )}
-                                        >
-                                            <div className="flex items-center justify-center gap-1.5 mb-1">
-                                                <Upload size={12} />
-                                                <span className="text-[12px] font-black">{client.pendingDocsCount || 0}</span>
-                                            </div>
-                                            <p className="text-[7px] font-black uppercase tracking-tight">Docs Pendentes</p>
-                                        </div>
+                                                <div className="grid grid-cols-3 gap-2 md:w-auto">
+                                                    <div 
+                                                        onClick={() => {
+                                                            setSelectedClient(client.id, client.name);
+                                                            setActiveTab('documents');
+                                                        }}
+                                                        className={cn(
+                                                            "px-3 py-2 rounded-xl text-center border-2 transition-all cursor-pointer",
+                                                            (client.pendingDocsCount || 0) > 0 
+                                                                ? "bg-amber-50 border-amber-100 text-amber-600 hover:bg-amber-100 font-black" 
+                                                                : "bg-white border-slate-50 text-slate-300"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1.5 mb-1">
+                                                            <Upload size={12} />
+                                                            <span className="text-[12px] font-black">{client.pendingDocsCount || 0}</span>
+                                                        </div>
+                                                        <p className="text-[7px] font-black uppercase tracking-tight">Docs Pendentes</p>
+                                                    </div>
 
-                                        <div 
-                                            onClick={() => {
-                                                setSelectedClient(client.id, client.name);
-                                                setActiveTab('reports');
-                                            }}
-                                            className={cn(
-                                                "px-3 py-2 rounded-xl text-center border-2 transition-all cursor-pointer",
-                                                !client.lastReportDate 
-                                                    ? "bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100 font-black" 
-                                                    : "bg-emerald-50 border-emerald-100 text-emerald-600 hover:bg-emerald-100 font-black"
-                                            )}
-                                        >
-                                            <div className="flex items-center justify-center gap-1.5 mb-1">
-                                                <FileText size={12} />
-                                                <span className="text-[10px] font-black">
-                                                    {client.lastReportDate ? 'OK' : '!'}
-                                                </span>
-                                            </div>
-                                            <p className="text-[7px] font-black uppercase tracking-tight">Relatórios</p>
-                                        </div>
+                                                    <div 
+                                                        onClick={() => {
+                                                            setSelectedClient(client.id, client.name);
+                                                            setActiveTab('reports');
+                                                        }}
+                                                        className={cn(
+                                                            "px-3 py-2 rounded-xl text-center border-2 transition-all cursor-pointer",
+                                                            !client.lastReportDate 
+                                                                ? "bg-rose-50 border-rose-100 text-rose-600 hover:bg-rose-100 font-black" 
+                                                                : "bg-emerald-50 border-emerald-100 text-emerald-600 hover:bg-emerald-100 font-black"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1.5 mb-1">
+                                                            <FileText size={12} />
+                                                            <span className="text-[10px] font-black">
+                                                                {client.lastReportDate ? 'OK' : '!'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[7px] font-black uppercase tracking-tight">Relatórios</p>
+                                                    </div>
 
-                                        <div 
-                                            onClick={() => {
-                                                setSelectedClient(client.id, client.name);
-                                                setActiveTab('transactions');
-                                            }}
-                                            className="px-3 py-2 rounded-xl text-center border-2 bg-primary text-white border-primary hover:scale-105 transition-all cursor-pointer shadow-lg shadow-primary/20"
-                                        >
-                                            <div className="flex items-center justify-center gap-1.5 mb-1">
-                                                <CreditCard size={12} />
+                                                    <div 
+                                                        onClick={() => {
+                                                            setSelectedClient(client.id, client.name);
+                                                            setActiveTab('transactions');
+                                                        }}
+                                                        className="px-3 py-2 rounded-xl text-center border-2 bg-primary text-white border-primary hover:scale-105 transition-all cursor-pointer shadow-lg shadow-primary/20"
+                                                    >
+                                                        <div className="flex items-center justify-center gap-1.5 mb-1">
+                                                            <CreditCard size={12} />
+                                                        </div>
+                                                        <p className="text-[7px] font-black uppercase tracking-tight">Lançar</p>
+                                                    </div>
+                                                </div>
                                             </div>
-                                            <p className="text-[7px] font-black uppercase tracking-tight">Lançar</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                        ))}
+                                </>
+                            )}
                         </div>
                     </Card>
 

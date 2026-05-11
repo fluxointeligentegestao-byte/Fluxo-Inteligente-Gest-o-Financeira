@@ -3,6 +3,7 @@ import { collection, query, where, getDocs, doc, onSnapshot, updateDoc, serverTi
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useClient } from '../context/ClientContext';
+import { base64ToURL, base64ToBlob, downloadFile } from '../lib/pdfUtils';
 import { 
     Download, 
     Upload, 
@@ -21,6 +22,7 @@ import {
     Check,
     ChevronLeft,
     FileText,
+    ExternalLink,
     Eye,
     Plus,
     Trash2
@@ -95,6 +97,20 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
     const [bankStatements, setBankStatements] = useState<any[]>([]);
     const [isPdfUploading, setIsPdfUploading] = useState(false);
     const [viewingPdf, setViewingPdf] = useState<string | null>(null);
+    const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
+
+    // Revoke blob URL on unmount or when viewingPdf changes
+    useEffect(() => {
+        if (viewingPdf) {
+            const url = base64ToURL(viewingPdf);
+            setViewingPdfUrl(url);
+            return () => {
+                URL.revokeObjectURL(url);
+            };
+        } else {
+            setViewingPdfUrl(null);
+        }
+    }, [viewingPdf]);
 
     // Load Banks
     useEffect(() => {
@@ -131,96 +147,102 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
         return () => unsub();
     }, [selectedClientId, selectedBankId]);
 
-    // Load System Transactions for the selected period
-    const loadSystemTransactions = async () => {
-        if (!selectedBankId || !selectedDate) return;
-        setLoading(true);
-        
-        try {
-            // 1. Calculate Initial Balance (Total settled before selectedDate + Bank initialBalance)
-            const selectedBank = banks.find(b => b.id === selectedBankId);
-            let runningBalance = selectedBank?.initialBalance || 0;
-            const initDate = selectedBank?.initialBalanceDate || '1900-01-01';
-
-            // Get all transactions for the client that are NOT yet conciled 
-            // OR were settled on the selected bank
-            const qAll = query(
-                collection(db, 'transactions'),
-                where('clientId', '==', selectedClientId)
-            );
-            const snapAll = await getDocs(qAll);
-            const allTrans = snapAll.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemTransaction));
-
-            // Summary calculation
-            const beforeDate = allTrans.filter(t => 
-                (t.status === 'Pago' || t.status === 'Recebido') &&
-                t.settlement?.bankId === selectedBankId && 
-                t.settlement?.paymentDate < selectedDate &&
-                t.settlement?.paymentDate >= initDate
-            );
-
-            beforeDate.forEach(t => {
-                const val = t.settlement?.paidValue || t.originalValue || 0;
-                runningBalance += (t.type === 'receita' ? val : -val);
-            });
-
-            // Transactions to show in the grid:
-            // 1. Pending transactions (not settled)
-            // 2. Transactions settled on this bank (conciled or not)
-            const filteredForGrid = allTrans.filter(t => {
-                const isPending = t.status === 'Pendente';
-                const isSettledInThisBank = t.settlement?.bankId === selectedBankId;
-                
-                // If it's settled in ANOTHER bank, don't show it here
-                if (t.settlement?.bankId && t.settlement.bankId !== selectedBankId) {
-                    return false;
-                }
-
-                // Show if it's pending OR settled in this bank
-                return isPending || isSettledInThisBank;
-            });
-
-            // Sort by due date
-            filteredForGrid.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
-
-            setSystemTransactions(filteredForGrid);
-
-            // 3. Calculate Today's Summary
-            const settledToday = allTrans.filter(t => 
-                t.settlement?.paymentDate === selectedDate && 
-                t.settlement?.bankId === selectedBankId
-            );
-
-            // 3. Calculate Today's Summary
-            let inflow = 0;
-            let outflow = 0;
-            let conciliatedTotal = 0;
-            
-            settledToday.forEach(t => {
-                const val = t.settlement?.paidValue || t.originalValue || 0;
-                if (t.type === 'receita') inflow += val;
-                else outflow += val;
-                
-                if (t.status === 'Conciliado' || t.settlement?.isConciled) {
-                    conciliatedTotal += (t.type === 'receita' ? val : -val);
-                }
-            });
-
-            setDailySummary({
-                initial: runningBalance,
-                inflow,
-                outflow,
-                final: runningBalance + inflow - outflow,
-                conciliatedTotal,
-                selectedTotal: 0
-            });
-
-        } catch (error) {
-            console.error("Error loading system transactions:", error);
-        } finally {
-            setLoading(false);
-        }
+    const formatDateBr = (dateIso: string) => {
+        if (!dateIso) return '';
+        const parts = dateIso.split('-');
+        if (parts.length !== 3) return dateIso;
+        const [y, m, d] = parts;
+        return `${d}/${m}/${y}`;
     };
+
+    // Load System Transactions for the selected period (Real-time)
+    useEffect(() => {
+        if (!selectedClientId || !selectedBankId || !selectedDate) return;
+        
+        console.log("Reconciliation: Subscribing to transactions for client", selectedClientId);
+        setLoading(true);
+
+        const q = query(
+            collection(db, 'transactions'),
+            where('clientId', '==', selectedClientId)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            try {
+                const allTrans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemTransaction));
+                const selectedBank = banks.find(b => b.id === selectedBankId);
+                let runningBalance = selectedBank?.initialBalance || 0;
+                const initDate = selectedBank?.initialBalanceDate || '1900-01-01';
+
+                const allSettledInBank = allTrans.filter(t => t.settlement?.bankId === selectedBankId);
+
+                // 1. Transactions settled BEFORE selectedDate
+                const beforeDate = allSettledInBank.filter(t => 
+                    t.settlement!.paymentDate < selectedDate &&
+                    t.settlement!.paymentDate >= initDate
+                );
+
+                beforeDate.forEach(t => {
+                    const val = t.settlement?.paidValue || t.originalValue || 0;
+                    runningBalance += (t.type === 'receita' ? val : -val);
+                });
+
+                // 2. Transactions settled TODAY (selectedDate)
+                const settledTodayCounted = allSettledInBank.filter(t => 
+                    t.settlement!.paymentDate === selectedDate
+                );
+
+                // Grid Filter: Pending OR settled TODAY in this bank
+                const filteredForGrid = allTrans.filter(t => {
+                    const isActuallyConciled = t.status === 'Conciliado' || t.settlement?.isConciled;
+                    const isPending = !isActuallyConciled && (t.status === 'Pendente' || t.status === 'Pago' || t.status === 'Recebido');
+                    const isSettledTodayInThisBank = t.settlement?.bankId === selectedBankId && t.settlement?.paymentDate === selectedDate;
+                    
+                    if (t.settlement?.bankId && t.settlement.bankId !== selectedBankId) return false;
+                    return isPending || isSettledTodayInThisBank;
+                });
+
+                // Sort
+                filteredForGrid.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+                setSystemTransactions(filteredForGrid);
+
+                // 3. Today's Summary
+                let inflow = 0;
+                let outflow = 0;
+                let conciliatedTotal = 0;
+                
+                settledTodayCounted.forEach(t => {
+                    const val = t.settlement?.paidValue || t.originalValue || 0;
+                    if (t.type === 'receita') inflow += val;
+                    else outflow += val;
+                    
+                    if (t.status === 'Conciliado' || t.settlement?.isConciled) {
+                        conciliatedTotal += (t.type === 'receita' ? val : -val);
+                    }
+                });
+
+                setDailySummary(prev => ({
+                    ...prev,
+                    initial: runningBalance,
+                    inflow,
+                    outflow,
+                    final: runningBalance + inflow - outflow,
+                    conciliatedTotal
+                }));
+
+            } catch (error) {
+                console.error("Error processing real-time transactions:", error);
+            } finally {
+                setLoading(false);
+            }
+        }, (error) => {
+            console.error("Error listening to transactions:", error);
+            handleFirestoreError(error, OperationType.LIST, 'transactions');
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [selectedClientId, selectedBankId, selectedDate, banks]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -235,9 +257,24 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 const parsed: BankTransaction[] = results.data.map((row: any, index) => {
                     const valueStr = (row.Valor || row.Value || '0').toString().replace('.', '').replace(',', '.');
                     const value = parseFloat(valueStr);
+                    
+                    // Normalize date to YYYY-MM-DD
+                    let rawDate = (row.Data || row.Date || '').toString();
+                    let normalizedDate = rawDate;
+                    if (rawDate.includes('/')) {
+                        const parts = rawDate.split('/');
+                        if (parts.length === 3) {
+                            if (parts[0].length === 4) { // YYYY/MM/DD
+                                normalizedDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+                            } else { // DD/MM/YYYY
+                                normalizedDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+                            }
+                        }
+                    }
+
                     return {
                         id: `bank-${index}`,
-                        date: row.Data || row.Date || '',
+                        date: normalizedDate,
                         description: row.Descrição || row.Description || '',
                         value: Math.abs(value),
                         type: (value >= 0 ? 'receita' : 'despesa') as 'receita' | 'despesa',
@@ -308,7 +345,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
             alert('Selecione uma conta bancária primeiro.');
             return;
         }
-        if (!confirm(`Deseja liquidar este título manualmente como ${transaction.type === 'receita' ? 'Recebido' : 'Pago'} em ${new Date(selectedDate).toLocaleDateString('pt-BR')}?`)) return;
+        if (!confirm(`Deseja liquidar este título manualmente como ${transaction.type === 'receita' ? 'Recebido' : 'Pago'} em ${formatDateBr(selectedDate)}?`)) return;
 
         try {
             const transRef = doc(db, 'transactions', transaction.id);
@@ -324,7 +361,6 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 updatedAt: serverTimestamp()
             });
             alert('Lançamento liquidado e conciliado com sucesso!');
-            loadSystemTransactions();
         } catch (error) {
             console.error("Error settling:", error);
             alert('Erro ao liquidar.');
@@ -388,7 +424,6 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 updatedAt: serverTimestamp()
             });
             alert('Título desconciliado com sucesso!');
-            loadSystemTransactions();
         } catch (error) {
             console.error("Error unreconciling:", error);
             alert('Erro ao desconciliar.');
@@ -421,7 +456,6 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
             }
             alert('Conciliação gravada com sucesso!');
             setBankTransactions([]);
-            loadSystemTransactions();
         } catch (error) {
             console.error("Error confirming reconciliation:", error);
             alert('Erro ao gravar conciliação.');
@@ -455,63 +489,8 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     updatedAt: serverTimestamp()
                 });
             }
-            loadSystemTransactions();
         } catch (error) {
             console.error("Error toggling conciliation:", error);
-        }
-    };
-
-    const handleConciliateAll = async () => {
-        if (!selectedBankId || systemTransactions.length === 0) return;
-        if (!confirm('Deseja conciliar todos os lançamentos pendentes desta data?')) return;
-        
-        setIsReconciling(true);
-        try {
-            const batch = systemTransactions.filter(st => st.status === 'Pendente');
-            for (const st of batch) {
-                const transRef = doc(db, 'transactions', st.id);
-                await updateDoc(transRef, {
-                    status: st.type === 'receita' ? 'Recebido' : 'Pago',
-                    settlement: {
-                        bankId: selectedBankId,
-                        paymentDate: selectedDate,
-                        paidValue: st.originalValue,
-                        settledAt: serverTimestamp(),
-                        isConciled: true
-                    },
-                    updatedAt: serverTimestamp()
-                });
-            }
-            alert('Todos os lançamentos foram conciliados!');
-            loadSystemTransactions();
-        } catch (error) {
-            console.error("Error conciliation all:", error);
-        } finally {
-            setIsReconciling(false);
-        }
-    };
-
-    const handleUnreconcileAll = async () => {
-        if (!selectedBankId || systemTransactions.length === 0) return;
-        if (!confirm('Deseja desconciliar todos os lançamentos desta data?')) return;
-        
-        setIsReconciling(true);
-        try {
-            const batch = systemTransactions.filter(st => st.status === 'Conciliado' || st.status === 'Recebido' || st.status === 'Pago');
-            for (const st of batch) {
-                const transRef = doc(db, 'transactions', st.id);
-                await updateDoc(transRef, {
-                    status: 'Pendente',
-                    settlement: null,
-                    updatedAt: serverTimestamp()
-                });
-            }
-            alert('Todos os lançamentos foram desconciliados!');
-            loadSystemTransactions();
-        } catch (error) {
-            console.error("Error unreconciling all:", error);
-        } finally {
-            setIsReconciling(false);
         }
     };
 
@@ -684,7 +663,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 </div>
 
                 <Button 
-                    onClick={loadSystemTransactions} 
+                    onClick={() => {}} 
                     disabled={!selectedBankId || loading}
                     className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-[10px] shadow-lg shadow-primary/20"
                 >
@@ -699,7 +678,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 <header className="bg-slate-100 border-b border-slate-200 p-2 flex items-center gap-4">
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
                         <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500">Saldo fim do dia</div>
-                        <div className="px-4 py-1.5 font-black text-slate-700 min-w-[100px]">{new Date(selectedDate).toLocaleDateString('pt-BR')}</div>
+                        <div className="px-4 py-1.5 font-black text-slate-700 min-w-[100px]">{formatDateBr(selectedDate)}</div>
                     </div>
 
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
@@ -726,18 +705,6 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     <div className="h-6 w-[1px] bg-slate-200 mx-2" />
 
                     <div className="flex gap-1">
-                        <button 
-                            onClick={handleConciliateAll}
-                            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded text-[9px] font-black uppercase text-slate-600 flex items-center gap-1.5 transition-all shadow-sm"
-                        >
-                            <Check size={14} className="text-emerald-500" /> Conciliar Todos
-                        </button>
-                        <button 
-                            onClick={handleUnreconcileAll}
-                            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded text-[9px] font-black uppercase text-slate-600 flex items-center gap-1.5 transition-all shadow-sm"
-                        >
-                            <RotateCcw size={14} className="text-rose-500" /> Desconciliar Todos
-                        </button>
                         <button 
                             onClick={handleAutoMatch}
                             className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded text-[9px] font-black uppercase flex items-center gap-1.5 transition-all shadow-sm"
@@ -908,17 +875,70 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                 >
                                     <X size={20} />
                                 </button>
-                                <div className="p-6 border-b border-slate-100">
+                                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
                                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2">
                                         <FileText size={18} className="text-rose-500" /> Visualização de Extrato PDF
                                     </h3>
+                                    <div className="flex items-center gap-2">
+                                        {viewingPdf && (
+                                            <>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    onClick={() => {
+                                                        const url = base64ToURL(viewingPdf);
+                                                        window.open(url, '_blank');
+                                                    }}
+                                                    className="text-[10px] font-black uppercase text-primary hover:bg-primary/5"
+                                                >
+                                                    <ExternalLink size={16} className="mr-2" /> Nova Aba
+                                                </Button>
+                                                <Button 
+                                                    variant="ghost" 
+                                                    size="sm" 
+                                                    onClick={() => {
+                                                        downloadFile(viewingPdf, `Extrato_${selectedBankId}_${selectedDate}.pdf`);
+                                                    }}
+                                                    className="text-[10px] font-black uppercase text-slate-500 hover:text-primary"
+                                                >
+                                                    <Download size={16} className="mr-2" /> Baixar
+                                                </Button>
+                                            </>
+                                        )}
+                                        <button 
+                                            onClick={() => setViewingPdf(null)}
+                                            className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors z-10"
+                                        >
+                                            <X size={20} />
+                                        </button>
+                                    </div>
                                 </div>
                                 <div className="flex-1 bg-slate-50 p-4">
-                                    <iframe 
-                                        src={viewingPdf} 
-                                        className="w-full h-full rounded-2xl border border-slate-200 shadow-inner"
-                                        title="Bank Statement PDF"
-                                    />
+                                    {viewingPdfUrl ? (
+                                        <div className="w-full h-full relative border border-slate-200 rounded-2xl overflow-hidden shadow-inner bg-white">
+                                            <object 
+                                                data={viewingPdfUrl} 
+                                                type="application/pdf"
+                                                className="w-full h-full"
+                                            >
+                                                <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
+                                                    <FileText size={48} className="mb-4 opacity-20" />
+                                                    <p className="text-sm font-bold uppercase tracking-tight mb-4">O visualizador nativo foi bloqueado pelo seu navegador</p>
+                                                    <Button 
+                                                        onClick={() => window.open(viewingPdfUrl, '_blank')}
+                                                        className="font-black uppercase text-[10px] tracking-widest px-6"
+                                                    >
+                                                        Abrir em Nova Aba
+                                                    </Button>
+                                                </div>
+                                            </object>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+                                            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                                            <p className="text-[10px] font-black uppercase tracking-widest">Processando documento...</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </motion.div>

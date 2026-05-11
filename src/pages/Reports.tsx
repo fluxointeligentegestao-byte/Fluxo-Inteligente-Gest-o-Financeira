@@ -39,6 +39,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useClient } from '../context/ClientContext';
+import { base64ToURL } from '../lib/pdfUtils';
 import { motion, AnimatePresence } from 'motion/react';
 import { ReconciliationReport } from '../components/ReconciliationReport';
 import { CashFlowReport } from '../components/CashFlowReport';
@@ -78,7 +79,21 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
     const [loading, setLoading] = useState(true);
     const [currentCategory, setCurrentCategory] = useState<string | null>(null);
     const [selectedReportForPreview, setSelectedReportForPreview] = useState<Report | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+
+    // Handle blob URL for preview
+    useEffect(() => {
+        if (selectedReportForPreview && selectedReportForPreview.url.startsWith('data:')) {
+            const url = base64ToURL(selectedReportForPreview.url);
+            setPreviewUrl(url);
+            return () => {
+                URL.revokeObjectURL(url);
+            };
+        } else {
+            setPreviewUrl(selectedReportForPreview?.url || null);
+        }
+    }, [selectedReportForPreview]);
     
     const clientPlan = isPreviewMode 
         ? clients.find(c => c.id === selectedClientId)?.planId 
@@ -723,11 +738,24 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
                                         </Button>
                                     </div>
                                 ) : (
-                                    <iframe 
-                                        src={selectedReportForPreview.url} 
-                                        className="w-full h-full border-none sm:rounded-2xl bg-white shadow-inner"
-                                        title={selectedReportForPreview.title}
-                                    />
+                                    <div className="w-full h-full relative sm:rounded-2xl overflow-hidden shadow-inner bg-white">
+                                        <object 
+                                            data={previewUrl || selectedReportForPreview.url} 
+                                            type="application/pdf"
+                                            className="w-full h-full"
+                                        >
+                                            <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
+                                                <FileText size={48} className="mb-4 opacity-20" />
+                                                <p className="text-sm font-bold uppercase tracking-tight mb-4">O visualizador nativo foi bloqueado pelo seu navegador</p>
+                                                <Button 
+                                                    onClick={() => window.open(previewUrl || selectedReportForPreview.url, '_blank')}
+                                                    className="font-black uppercase text-[10px] tracking-widest px-6"
+                                                >
+                                                    Abrir em Nova Aba
+                                                </Button>
+                                            </div>
+                                        </object>
+                                    </div>
                                 )}
                             </div>
                             

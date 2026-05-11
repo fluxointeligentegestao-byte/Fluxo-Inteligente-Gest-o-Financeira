@@ -24,29 +24,56 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Load clients for admin
   useEffect(() => {
     if (isAdmin) {
-      const q = query(collection(db, "userProfiles"), where("role", "==", "client"));
+      console.log("ClientContext: Subscribing to userProfiles (isAdmin=true)... User:", profile?.email);
+      // Broadened query to see if role filter was the issue
+      const q = query(collection(db, "userProfiles"));
       const unsubscribe = onSnapshot(q, (snapshot: any) => {
-        const clientList = snapshot.docs.map((doc: any) => {
-          const data = doc.data();
-          let planId = data.planId || data.plan;
-          if (planId) {
-            planId = planId.toLowerCase();
-            if (planId === 'consultoria') planId = 'premium';
-          }
-          return {
-            id: doc.id,
-            name: data.name,
-            planId: planId
-          };
-        });
+        console.log(`ClientContext: Fetched ${snapshot.docs.length} total profiles from Firestore`);
+        const clientList = snapshot.docs
+          .map((doc: any) => {
+            const data = doc.data();
+            // console.log(`ClientContext: Profile found - ID: ${doc.id}, Name: ${data.name}, Role: ${data.role}`);
+            return { 
+              id: doc.id, 
+              name: data.name || data.companyName || 'Sem nome',
+              role: data.role?.toLowerCase() || '',
+              ...data 
+            };
+          })
+          .filter((profile: any) => {
+            const role = profile.role;
+            // Admin is never a client in this list
+            if (role === 'admin') return false;
+            // Common variations or empty role defaults to client
+            return role === 'client' || role === 'cliente' || !role;
+          }) 
+          .map((profile: any) => {
+            let planId = profile.planId || profile.plan;
+            if (planId) {
+              planId = planId.toLowerCase();
+              if (planId === 'consultoria') planId = 'premium';
+            }
+            return {
+              id: profile.id,
+              name: profile.name || 'Sem nome',
+              planId: planId
+            };
+          });
+        
+        console.log(`ClientContext: Final client list size after filter: ${clientList.length}`);
         setClients(clientList);
       }, (error) => {
         console.error("Error listening to clients in ClientContext:", error);
-        handleFirestoreError(error, OperationType.GET, 'userProfiles');
+        if (error.message.includes('permission-denied')) {
+          console.warn("Permission denied for listing userProfiles. Check Firestore rules.");
+        }
       });
       return () => unsubscribe();
+    } else {
+      console.log("ClientContext: Not an admin or not loaded, skipping client subscribe. isAdmin:", isAdmin, "Profile:", !!profile);
+      setClients([]);
     }
-  }, [profile]);
+  }, [profile, isAdmin]);
 
   // Default to own ID if not admin
   useEffect(() => {

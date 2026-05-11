@@ -12,6 +12,8 @@ import {
     FolderOpen,
     Eye,
     Trash2,
+    Download,
+    ExternalLink,
     ArrowLeft,
     ChevronRight,
     ChevronLeft
@@ -32,7 +34,9 @@ import {
     orderBy
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { base64ToURL, base64ToBlob, downloadFile } from '../lib/pdfUtils';
 import { motion, AnimatePresence } from 'motion/react';
+import { Download } from 'lucide-react';
 
 interface ClientDocument {
     id: string;
@@ -67,6 +71,22 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
     const [uploading, setUploading] = useState(false);
     const [selectedFile, setSelectedFile] = useState<{name: string, url: string} | null>(null);
     const [docType, setDocType] = useState('Outros');
+    const [previewingDoc, setPreviewingDoc] = useState<ClientDocument | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (previewingDoc) {
+            const url = base64ToURL(previewingDoc.url);
+            setPreviewUrl(url);
+            return () => {
+                if (url && url.startsWith('blob:')) {
+                    URL.revokeObjectURL(url);
+                }
+            };
+        } else {
+            setPreviewUrl(null);
+        }
+    }, [previewingDoc]);
 
     useEffect(() => {
         if (!user) return;
@@ -322,7 +342,7 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
                             ) : filteredDocs.map((docItem) => (
                                 <tr 
                                     key={docItem.id} 
-                                    onClick={() => window.open(docItem.url, '_blank')}
+                                    onClick={() => setPreviewingDoc(docItem)}
                                     className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
                                 >
                                     <td className="px-6 py-3">
@@ -456,6 +476,78 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
                                 >
                                     {uploading ? 'Enviando...' : 'Confirmar Envio'}
                                 </Button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Preview Modal */}
+            <AnimatePresence>
+                {previewingDoc && (
+                    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white w-full max-w-5xl h-[90vh] rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col"
+                        >
+                            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight truncate max-w-md">{previewingDoc.name}</h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{previewingDoc.type} • {previewingDoc.clientName}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button 
+                                        variant="ghost" 
+                                        onClick={() => {
+                                            if (previewUrl) window.open(previewUrl, '_blank');
+                                        }}
+                                        className="text-[10px] font-black uppercase text-primary hover:bg-primary/5"
+                                    >
+                                        <ExternalLink size={18} className="mr-2" /> Nova Aba
+                                    </Button>
+                                    <Button 
+                                        variant="ghost" 
+                                        onClick={() => downloadFile(previewingDoc.url, previewingDoc.name)}
+                                        className="text-[10px] font-black uppercase text-slate-500 hover:text-primary"
+                                    >
+                                        <Download size={18} className="mr-2" /> Baixar
+                                    </Button>
+                                    <button 
+                                        onClick={() => setPreviewingDoc(null)}
+                                        className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all"
+                                    >
+                                        <X size={24} />
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="flex-1 bg-slate-50 p-4">
+                                {previewUrl ? (
+                                    <div className="w-full h-full relative border border-slate-200 rounded-2xl overflow-hidden shadow-inner bg-white">
+                                        <object 
+                                            data={previewUrl} 
+                                            type="application/pdf"
+                                            className="w-full h-full"
+                                        >
+                                            <div className="flex flex-col items-center justify-center h-full p-8 text-center text-slate-500">
+                                                <FileText size={48} className="mb-4 opacity-20" />
+                                                <p className="text-sm font-bold uppercase tracking-tight mb-4">O visualizador nativo foi bloqueado pelo seu navegador</p>
+                                                <Button 
+                                                    onClick={() => window.open(previewUrl, '_blank')}
+                                                    className="font-black uppercase text-[10px] tracking-widest px-6"
+                                                >
+                                                    Abrir em Nova Aba
+                                                </Button>
+                                            </div>
+                                        </object>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+                                        <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                                        <p className="text-[10px] font-black uppercase tracking-widest">Carregando visualização...</p>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     </div>

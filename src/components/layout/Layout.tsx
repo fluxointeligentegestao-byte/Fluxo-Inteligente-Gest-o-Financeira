@@ -47,6 +47,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
 
   const ClientSelector = () => {
     if (!isAdmin) return null;
+    console.log(`Layout: Rendering ClientSelector with ${clients.length} clients. Selected: ${selectedClientId}`);
     return (
       <div className="px-6 mb-8 space-y-2">
         <div className="relative group">
@@ -62,6 +63,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
             className="w-full pl-11 pr-10 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-[11px] font-black uppercase tracking-widest text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 focus:bg-white transition-all appearance-none cursor-pointer"
           >
             <option value="">Selecionar Empresa...</option>
+            {clients.length === 0 && <option disabled>Nenhuma empresa encontrada</option>}
             {clients.map(client => (
               <option key={client.id} value={client.id}>{client.name}</option>
             ))}

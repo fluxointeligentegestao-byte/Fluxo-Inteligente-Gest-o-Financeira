@@ -35,6 +35,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useClient } from '../context/ClientContext';
+import { base64ToURL } from '../lib/pdfUtils';
 
 interface Client {
   id: string;
@@ -98,21 +99,30 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
     const [reportCategory, setReportCategory] = useState(REPORT_CATEGORIES[0]);
     const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
     const [previewDoc, setPreviewDoc] = useState<{name: string, url: string} | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+    // Effect to handle blob URL for preview
+    useEffect(() => {
+        if (previewDoc) {
+            const url = base64ToURL(previewDoc.url);
+            setPreviewUrl(url);
+            return () => {
+                URL.revokeObjectURL(url);
+            };
+        } else {
+            setPreviewUrl(null);
+        }
+    }, [previewDoc]);
 
     // Real-time listener for clients
     useEffect(() => {
-        const q = query(
-            collection(db, 'userProfiles'), 
-            where('role', '==', 'client')
-            // orderBy removed to avoid index requirements during initial setup
-        );
+        const q = query(collection(db, 'userProfiles'));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
             console.log(`Clients fetched: ${snapshot.docs.length}`);
-            const clientList = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-            })) as Client[];
+            const clientList = snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data() as any }))
+                .filter(p => p.role === 'client' || !p.role);
             
             // Sort manually by createdAt if exists
             const sortedClients = clientList.sort((a: any, b: any) => {
@@ -304,8 +314,9 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
     };
 
     const filteredClients = clients.filter(c => 
-        c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        c.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
+        (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+        (c.companyName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.email || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     if (selectedClient) {
@@ -389,13 +400,13 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
                                     </div>
                                 </div>
                                 <div className="flex-1 bg-slate-100 relative">
-                                    {previewDoc.url.startsWith('data:application/pdf') || previewDoc.name.toLowerCase().endsWith('.pdf') ? (
+                                    {previewUrl && (previewDoc.url.startsWith('data:application/pdf') || previewDoc.name.toLowerCase().endsWith('.pdf')) ? (
                                         <iframe 
-                                            src={previewDoc.url} 
+                                            src={previewUrl} 
                                             className="w-full h-full border-none"
                                             title="PDF Preview"
                                         />
-                                    ) : previewDoc.url.startsWith('data:image') ? (
+                                    ) : previewDoc?.url?.startsWith('data:image') ? (
                                         <div className="w-full h-full flex items-center justify-center p-8">
                                             <img src={previewDoc.url} alt="Preview" className="max-w-full max-h-full object-contain shadow-lg" />
                                         </div>
