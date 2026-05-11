@@ -372,11 +372,11 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     paymentDate: endDate,
                     paidValue: transaction.originalValue,
                     settledAt: serverTimestamp(),
-                    isConciled: true
+                    isConciled: false // Baixa manual na conciliação não concilia automaticamente
                 },
                 updatedAt: serverTimestamp()
             });
-            alert('Lançamento liquidado e conciliado com sucesso!');
+            alert('Lançamento liquidado (baixado) com sucesso! Note que ele só afetará o Saldo do Banco após ser conciliado.');
         } catch (error) {
             console.error("Error settling:", error);
             alert('Erro ao liquidar.');
@@ -430,14 +430,29 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
     };
 
     const handleUnreconcile = async (transaction: SystemTransaction) => {
-        if (!confirm('Deseja desconciliar este título? Ele voltará para o status Pendente.')) return;
+        if (!confirm('Deseja desconciliar este título? Ele voltará para o status Pendente e o saldo do banco será revertido.')) return;
         
         try {
-            const transRef = doc(db, 'transactions', transaction.id);
-            await updateDoc(transRef, {
-                status: 'Pendente',
-                settlement: null, // Removes bank link and reconciliation info
-                updatedAt: serverTimestamp()
+            await runTransaction(db, async (txn) => {
+                const transRef = doc(db, 'transactions', transaction.id);
+                const bankId = transaction.settlement?.bankId;
+                
+                if (bankId) {
+                    const bankRef = doc(db, 'banks', bankId);
+                    const bankDoc = await txn.get(bankRef);
+                    if (bankDoc.exists()) {
+                        const currentBalance = bankDoc.data().balance || 0;
+                        const val = transaction.settlement?.paidValue || transaction.originalValue || 0;
+                        const adjustment = transaction.type === 'receita' ? -val : val;
+                        txn.update(bankRef, { balance: currentBalance + adjustment });
+                    }
+                }
+
+                txn.update(transRef, {
+                    status: 'Pendente',
+                    settlement: null,
+                    updatedAt: serverTimestamp()
+                });
             });
             alert('Título desconciliado com sucesso!');
         } catch (error) {
@@ -451,26 +466,43 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
         setIsReconciling(true);
         
         try {
-            // Update matched transactions in Firestore
-            for (const bt of bankTransactions) {
-                if (bt.conciliatedId) {
-                    const transRef = doc(db, 'transactions', bt.conciliatedId);
-                    
-                    // Update as settled
-                    await updateDoc(transRef, {
-                        status: bt.type === 'receita' ? 'Recebido' : 'Pago',
-                        settlement: {
-                            bankId: selectedBankId,
-                            paymentDate: bt.date,
-                            paidValue: bt.value,
-                            settledAt: serverTimestamp(),
-                            isConciled: true
-                        },
-                        updatedAt: serverTimestamp()
-                    });
+            await runTransaction(db, async (txn) => {
+                const bankRef = doc(db, 'banks', selectedBankId);
+                const bankDoc = await txn.get(bankRef);
+                if (!bankDoc.exists()) throw new Error("Banco não encontrado");
+                
+                let balanceChange = 0;
+
+                for (const bt of bankTransactions) {
+                    if (bt.conciliatedId) {
+                        const transRef = doc(db, 'transactions', bt.conciliatedId);
+                        const transDoc = await txn.get(transRef);
+                        const transactionData = transDoc.exists() ? transDoc.data() : null;
+                        
+                        const isAlreadyConciled = transactionData?.status === 'Conciliado' || transactionData?.settlement?.isConciled;
+                        if (isAlreadyConciled) continue; // Skip if already conciled
+
+                        balanceChange += (bt.type === 'receita' ? bt.value : -bt.value);
+
+                        txn.update(transRef, {
+                            status: bt.type === 'receita' ? 'Recebido' : 'Pago',
+                            settlement: {
+                                bankId: selectedBankId,
+                                paymentDate: bt.date,
+                                paidValue: bt.value,
+                                settledAt: serverTimestamp(),
+                                isConciled: true
+                            },
+                            updatedAt: serverTimestamp()
+                        });
+                    }
                 }
-            }
-            alert('Conciliação gravada com sucesso!');
+
+                const currentBalance = bankDoc.data().balance || 0;
+                txn.update(bankRef, { balance: currentBalance + balanceChange });
+            });
+
+            alert('Conciliação gravada com sucesso! O Saldo do Banco foi atualizado.');
             setBankTransactions([]);
         } catch (error) {
             console.error("Error confirming reconciliation:", error);
@@ -486,28 +518,40 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
         const effectiveValueForSettlement = st.settlement?.paidValue || st.originalValue;
         
         try {
-            const transRef = doc(db, 'transactions', st.id);
-            if (isReconciled) {
-                await updateDoc(transRef, {
-                    status: 'Pendente',
-                    settlement: null,
-                    updatedAt: serverTimestamp()
-                });
-            } else {
-                await updateDoc(transRef, {
-                    status: st.type === 'receita' ? 'Recebido' : 'Pago',
-                    settlement: {
-                        bankId: selectedBankId,
-                        paymentDate: endDate,
-                        paidValue: effectiveValueForSettlement,
-                        settledAt: serverTimestamp(),
-                        isConciled: true
-                    },
-                    updatedAt: serverTimestamp()
-                });
-            }
+            await runTransaction(db, async (txn) => {
+                const transRef = doc(db, 'transactions', st.id);
+                const bankRef = doc(db, 'banks', selectedBankId);
+                const bankDoc = await txn.get(bankRef);
+                
+                if (!bankDoc.exists()) throw new Error("Banco não encontrado");
+                const currentBalance = bankDoc.data().balance || 0;
+                const adjustment = st.type === 'receita' ? effectiveValueForSettlement : -effectiveValueForSettlement;
+
+                if (isReconciled) {
+                    txn.update(transRef, {
+                        status: 'Pendente',
+                        settlement: null,
+                        updatedAt: serverTimestamp()
+                    });
+                    txn.update(bankRef, { balance: currentBalance - adjustment });
+                } else {
+                    txn.update(transRef, {
+                        status: st.type === 'receita' ? 'Recebido' : 'Pago',
+                        settlement: {
+                            bankId: selectedBankId,
+                            paymentDate: endDate,
+                            paidValue: effectiveValueForSettlement,
+                            settledAt: serverTimestamp(),
+                            isConciled: true
+                        },
+                        updatedAt: serverTimestamp()
+                    });
+                    txn.update(bankRef, { balance: currentBalance + adjustment });
+                }
+            });
         } catch (error) {
             console.error("Error toggling conciliation:", error);
+            alert('Erro ao processar conciliação.');
         }
     };
 
@@ -715,7 +759,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     </div>
 
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
-                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter">Saldo Acumulado</div>
+                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter" title="Soma de todos os títulos baixados (pagos/recebidos)">Saldo Acumulado</div>
                         <div className={cn(
                             "px-4 py-1.5 font-black min-w-[120px]",
                             dailySummary.final >= 0 ? "text-emerald-600" : "text-rose-600"
@@ -723,11 +767,19 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     </div>
 
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
-                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter">Banco</div>
+                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter" title="Soma apenas dos títulos já conciliados com o extrato">Banco (Conciliado)</div>
                         <div className={cn(
                             "px-4 py-1.5 font-black min-w-[120px]",
                             dailySummary.conciliatedTotal >= 0 ? "text-emerald-600" : "text-rose-600"
                         )}>{formatCurrency(dailySummary.conciliatedTotal)}</div>
+                    </div>
+
+                    <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px] ml-auto">
+                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter">Diferença</div>
+                        <div className={cn(
+                            "px-4 py-1.5 font-black min-w-[100px]",
+                            (dailySummary.final - dailySummary.conciliatedTotal) === 0 ? "text-slate-400" : "text-amber-600"
+                        )}>{formatCurrency(dailySummary.final - dailySummary.conciliatedTotal)}</div>
                     </div>
 
                     <div className="h-6 w-[1px] bg-slate-200 mx-2" />

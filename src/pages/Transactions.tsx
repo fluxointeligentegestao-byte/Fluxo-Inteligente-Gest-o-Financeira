@@ -78,6 +78,7 @@ interface FinancialTransaction {
         bankId: string;
         paymentMethodId: string;
         settledAt: any;
+        isConciled?: boolean;
         interest?: number;
         penalty?: number;
         discount?: number;
@@ -389,34 +390,22 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         try {
             await runTransaction(db, async (transaction) => {
                 const transRef = doc(db, 'transactions', selectedTransaction.id);
-                const bankRef = doc(db, 'banks', settlementData.bankId);
                 
-                const bankDoc = await transaction.get(bankRef);
-                if (!bankDoc.exists()) throw new Error('Banco não encontrado');
-
-                const currentBalance = bankDoc.data().balance || 0;
-                const adjustment = selectedTransaction.type === 'receita' ? settlementData.paidValue : -settlementData.paidValue;
-                const newBalance = currentBalance + adjustment;
-
-                // Update transaction
+                // Update transaction only - do NOT update bank balance here
+                // Bank balance is updated only on conciliation
                 transaction.update(transRef, {
                     status: selectedTransaction.type === 'receita' ? 'Recebido' : 'Pago',
                     settlement: {
                         ...settlementData,
+                        isConciled: false, // Explicitly not conciled on simple settle
                         settledAt: serverTimestamp()
                     },
-                    updatedAt: serverTimestamp()
-                });
-
-                // Update bank balance
-                transaction.update(bankRef, {
-                    balance: newBalance,
                     updatedAt: serverTimestamp()
                 });
             });
 
             setIsSettlementModalOpen(false);
-            alert('Baixa realizada com sucesso!');
+            alert('Baixa realizada com sucesso! O título agora consta como liquidado no sistema.');
         } catch (error) {
             console.error("Error settling transaction:", error);
             alert('Erro ao realizar baixar. Verifique os dados.');
@@ -429,31 +418,23 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             return;
         }
 
+        // Warning: if it's already conciled, it shouldn't be reverted here probably, 
+        // but we allow it and only update transaction since 'baixar' didn't affect bank balance
+        const wasConciled = transaction.settlement?.isConciled;
+        if (wasConciled) {
+            alert('Erro: Este título já está conciliado. Para estornar a baixa, primeiro desconcilie na ferramenta de Conciliação Bancária.');
+            return;
+        }
+
         try {
             await runTransaction(db, async (firestoreTransaction) => {
                 const transRef = doc(db, 'transactions', transaction.id);
-                const bankRef = doc(db, 'banks', transaction.settlement.bankId);
                 
-                const bankDoc = await firestoreTransaction.get(bankRef);
-                if (!bankDoc.exists()) throw new Error('Banco não encontrado');
-
-                const currentBalance = bankDoc.data().balance || 0;
-                const paidValue = transaction.settlement.paidValue || transaction.originalValue;
-                
-                // Revert balance: if it was a receipt (receita), subtract. If it was a payment (despesa), add back.
-                const adjustment = transaction.type === 'receita' ? -paidValue : paidValue;
-                const newBalance = currentBalance + adjustment;
-
                 // Update transaction back to Pendente and remove settlement info
+                // We don't touch bank balance because 'Baixar' didn't touch it
                 firestoreTransaction.update(transRef, {
                     status: 'Pendente',
                     settlement: null,
-                    updatedAt: serverTimestamp()
-                });
-
-                // Update bank balance
-                firestoreTransaction.update(bankRef, {
-                    balance: newBalance,
                     updatedAt: serverTimestamp()
                 });
             });
@@ -462,7 +443,7 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             alert('Baixa estornada com sucesso! O título voltou para Pendente.');
         } catch (error) {
             console.error("Error reverting settlement:", error);
-            alert('Erro ao estornar baixa. Verifique suas permissões ou se a conta bancária ainda existe.');
+            alert('Erro ao estornar baixa.');
         }
     };
 
