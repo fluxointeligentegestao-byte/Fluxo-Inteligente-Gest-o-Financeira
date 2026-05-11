@@ -125,6 +125,21 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["clientId", "month", "amount", "status"]
+    },
+    "bankStatement": {
+      "title": "Bank Statement PDF",
+      "description": "Stored PDF content of bank statements for reconciliation.",
+      "type": "object",
+      "properties": {
+        "clientId": { "type": "string" },
+        "bankId": { "type": "string" },
+        "monthYear": { "type": "string" },
+        "pdfContent": { "type": "string", "description": "Base64 encoded PDF" },
+        "fileName": { "type": "string" },
+        "uploadDate": { "type": "string", "format": "date-time" },
+        "refDate": { "type": "string", "format": "date" }
+      },
+      "required": ["clientId", "bankId", "monthYear", "pdfContent"]
     }
   },
   "firestore": {
@@ -136,6 +151,13 @@
     "/channels/{channelId}/messages/{messageId}": { "schema": "message", "description": "Chat history" },
     "/financialAgenda/{clientId}/entries/{entryId}": { "schema": "financialEntry", "description": "Entries for the monthly agenda" },
     "/payments/{paymentId}": { "schema": "payment", "description": "Monthly subscription payments from clients" },
-    "/system_configs/{configId}": { "schema": "object", "description": "System-wide configurations" }
+    "/system_configs/{configId}": { "schema": "object", "description": "System-wide configurations" },
+    "/bankStatements/{statementId}": { "schema": "bankStatement", "description": "PDF bank statements" },
+    "/transactions/{transactionId}": { "schema": "object", "description": "Main financial transactions" },
+    "/banks/{bankId}": { "schema": "object", "description": "Bank account configurations" },
+    "/partners/{partnerId}": { "schema": "object", "description": "Customers and Suppliers" },
+    "/chartOfAccounts/{nodeId}": { "schema": "object", "description": "Finance structure" },
+    "/costCenters/{costCenterId}": { "schema": "object", "description": "Cost centers" },
+    "/paymentMethods/{methodId}": { "schema": "object", "description": "Payment methods" }
   }
 }

@@ -104,6 +104,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
         { id: 'documents', label: 'Documentos', icon: Upload, hasAccess: true },
         { id: 'plans', label: 'Planos & Serviços', icon: CreditCard, hasAccess: true },
         { id: 'support', label: 'Suporte', icon: MessageSquare, hasAccess: true },
+        { id: 'logout', label: 'Sair / Trocar Conta', icon: LogOut, hasAccess: true },
       ]
     : [
         { id: 'profile', label: 'Meu Perfil', icon: User },
@@ -112,6 +113,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
         { id: 'documents', label: 'Meus Documentos', icon: Upload },
         { id: 'plans', label: 'Planos', icon: CreditCard },
         { id: 'support', label: 'Suporte & Ajuda', icon: MessageSquare },
+        { id: 'logout', label: 'Sair / Trocar Conta', icon: LogOut },
       ].map(item => {
         const clientPlan = isPreviewMode 
             ? clients.find(c => c.id === selectedClientId)?.planId 
@@ -129,6 +131,10 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
       });
 
   const handleTabClick = (itemId: string, hasAccess: boolean) => {
+    if (itemId === 'logout') {
+      signOut();
+      return;
+    }
     const isOwnerAdmin = user?.email === 'fluxointeligente.gestao@gmail.com';
     if (!hasAccess && !isOwnerAdmin) {
         alert("Esta funcionalidade não faz parte do seu pacote atual. Entre em contato com a Fluxo Inteligente para fazer o upgrade do seu plano!");

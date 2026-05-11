@@ -27,9 +27,9 @@ service cloud.firestore {
       // Identity lookup from the source of truth or master admin email
       return isSignedIn() && (
         request.auth.token.email == "fluxointeligente.gestao@gmail.com" ||
-        request.auth.email == "fluxointeligente.gestao@gmail.com" ||
+        request.auth.token.email == "suporte@fluxointeligente.com.br" ||
         (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.role == 'admin')
+         get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin')
       );
     }
 
@@ -186,6 +186,12 @@ service cloud.firestore {
     match /transactions/{docId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
+    }
+
+    match /bankStatements/{statementId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && incoming().clientId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && existing().clientId == request.auth.uid);
     }
 
     match /chartOfAccounts/{docId} {

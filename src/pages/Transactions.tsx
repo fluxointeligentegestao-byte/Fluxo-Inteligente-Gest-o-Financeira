@@ -217,6 +217,9 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FinancialTransaction));
             setTransactions(list);
             setLoading(false);
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, 'transactions');
+            setLoading(false);
         });
 
         const unsubPartners = onSnapshot(query(
@@ -224,6 +227,8 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             where('clientId', '==', selectedClientId)
         ), (snap) => {
             setPartners(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, 'partners');
         });
 
         const unsubBanks = onSnapshot(query(
@@ -231,6 +236,8 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             where('clientId', '==', selectedClientId)
         ), (snap) => {
             setBanks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, 'banks');
         });
 
         return () => {
@@ -582,7 +589,7 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Controle de Contas a Pagar e Receber</p>
                     </div>
                 </div>
-                {isAdmin && selectedClientId && (
+                {(!isAdmin || selectedClientId) && (
                     <Button 
                         onClick={() => { resetForm(); setIsModalOpen(true); }}
                         className="rounded-xl px-6 py-3 text-[11px] font-black uppercase tracking-widest shadow-xl shadow-primary/20"
@@ -970,26 +977,26 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                 <div className="space-y-4 md:col-span-1 border-r border-slate-50 pr-6">
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tipo de Lançamento</label>
-                                        <div className="flex gap-2">
-                                            <button 
-                                                type="button"
-                                                onClick={() => setFormData({...formData, type: 'despesa'})}
-                                                className={cn(
-                                                    "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all",
-                                                    formData.type === 'despesa' ? "bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-200" : "bg-white border-slate-100 text-slate-400"
-                                                )}
-                                            >
-                                                Pagar
-                                            </button>
+                                        <div className="flex gap-4">
                                             <button 
                                                 type="button"
                                                 onClick={() => setFormData({...formData, type: 'receita'})}
                                                 className={cn(
-                                                    "flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all",
-                                                    formData.type === 'receita' ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-200" : "bg-white border-slate-100 text-slate-400"
+                                                    "flex-1 py-4 px-4 min-w-[140px] rounded-2xl text-[12px] font-black uppercase tracking-tight border-2 transition-all whitespace-nowrap flex items-center justify-center gap-2",
+                                                    formData.type === 'receita' ? "bg-emerald-500 border-emerald-500 text-white shadow-xl shadow-emerald-200" : "bg-white border-slate-100 text-slate-400 hover:border-emerald-100"
                                                 )}
                                             >
-                                                Receber
+                                                <ArrowUpCircle size={18} /> RECEBER
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => setFormData({...formData, type: 'despesa'})}
+                                                className={cn(
+                                                    "flex-1 py-4 px-4 min-w-[140px] rounded-2xl text-[12px] font-black uppercase tracking-tight border-2 transition-all whitespace-nowrap flex items-center justify-center gap-2",
+                                                    formData.type === 'despesa' ? "bg-rose-500 border-rose-500 text-white shadow-xl shadow-rose-200" : "bg-white border-slate-100 text-slate-400 hover:border-rose-100"
+                                                )}
+                                            >
+                                                <ArrowDownCircle size={18} /> PAGAR
                                             </button>
                                         </div>
                                     </div>
@@ -1036,9 +1043,9 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                             <button 
                                                 type="button"
                                                 onClick={() => setIsPartnerModalOpen(true)}
-                                                className="text-[9px] font-black text-primary uppercase tracking-widest hover:underline flex items-center gap-1"
+                                                className="px-2 py-1 bg-primary/5 text-[9px] font-black text-primary uppercase tracking-widest hover:bg-primary/10 border border-primary/20 rounded-lg transition-all flex items-center gap-1"
                                             >
-                                                <Plus size={10} /> Cadastrar Novo
+                                                <Plus size={10} /> Novo
                                             </button>
                                         </div>
                                         <select 

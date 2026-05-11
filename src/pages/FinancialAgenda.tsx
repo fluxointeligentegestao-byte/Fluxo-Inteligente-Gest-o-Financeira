@@ -1187,10 +1187,10 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
                                         <select 
                                             value={newEntry.type}
                                             onChange={(e) => setNewEntry({...newEntry, type: e.target.value as any})}
-                                            className="w-full px-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 border border-transparent focus:border-primary/20 transition-all"
+                                            className="w-full px-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 border border-transparent focus:border-primary/20 transition-all font-black uppercase tracking-tight"
                                         >
-                                            <option value="pagar">Saída (Pagar)</option>
-                                            <option value="receber">Entrada (Receber)</option>
+                                            <option value="pagar">SAÍDA (PAGAR)</option>
+                                            <option value="receber">ENTRADA (RECEBER)</option>
                                         </select>
                                     </div>
                                     <div className="space-y-1.5">
