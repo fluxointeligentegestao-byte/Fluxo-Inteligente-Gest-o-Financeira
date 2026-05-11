@@ -251,8 +251,9 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
     }, [selectedClientId]);
 
     const generateNextDocNumber = async (type: 'receita' | 'despesa'): Promise<string> => {
+        if (!selectedClientId) return 'ERR-000';
         const prefix = type === 'receita' ? 'R' : 'P';
-        const counterRef = doc(db, 'system_counters', `transaction_${prefix}`);
+        const counterRef = doc(db, 'clients', selectedClientId, 'counters', `transaction_${prefix}`);
         
         try {
             const nextNum = await runTransaction(db, async (transaction) => {
@@ -266,10 +267,10 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                 return next;
             });
             
-            return `${prefix}${nextNum.toString().padStart(3, '0')}`;
+            return `${prefix}-${nextNum.toString().padStart(4, '0')}`;
         } catch (error) {
             console.error("Error generating number:", error);
-            return `${prefix}???`;
+            return `${prefix}-????`;
         }
     };
 
@@ -835,8 +836,13 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
-                                            <span className="text-xs font-black text-slate-800 uppercase">{t.partnerName || 'N/A'}</span>
-                                            <span className="text-[10px] font-bold text-slate-400 mt-0.5">{t.description || t.docNumber}</span>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
+                                                    {t.docNumber || '----'}
+                                                </span>
+                                                <span className="text-xs font-black text-slate-800 uppercase">{t.partnerName || 'N/A'}</span>
+                                            </div>
+                                            <span className="text-[10px] font-bold text-slate-400">{t.description || 'Sem descrição'}</span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">

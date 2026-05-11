@@ -44,6 +44,7 @@ interface BankTransaction {
 
 interface SystemTransaction {
     id: string;
+    docNumber?: string;
     dueDate: string;
     originalValue: number;
     partnerName: string;
@@ -73,7 +74,8 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
 
     const [banks, setBanks] = useState<any[]>([]);
     const [selectedBankId, setSelectedBankId] = useState('');
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().substring(0, 10)); // YYYY-MM-DD
+    const [startDate, setStartDate] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().substring(0, 10));
+    const [endDate, setEndDate] = useState(new Date().toISOString().substring(0, 10));
     
     const [bankTransactions, setBankTransactions] = useState<BankTransaction[]>([]);
     const [systemTransactions, setSystemTransactions] = useState<SystemTransaction[]>([]);
@@ -160,7 +162,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
 
     // Load System Transactions for the selected period (Real-time)
     useEffect(() => {
-        if (!selectedClientId || !selectedBankId || !selectedDate) return;
+        if (!selectedClientId || !selectedBankId || !startDate || !endDate) return;
         
         console.log("Reconciliation: Subscribing to transactions for client", selectedClientId);
         setLoading(true);
@@ -174,63 +176,73 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
             try {
                 const allTrans = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SystemTransaction));
                 const selectedBank = banks.find(b => b.id === selectedBankId);
-                let runningBalance = selectedBank?.initialBalance || 0;
                 const initDate = selectedBank?.initialBalanceDate || '1900-01-01';
 
                 const allSettledInBank = allTrans.filter(t => t.settlement?.bankId === selectedBankId);
 
-                // 1. Transactions settled BEFORE selectedDate
+                // 1. Transactions settled BEFORE startDate (to get Initial Balance of the period)
                 const beforeDate = allSettledInBank.filter(t => 
-                    t.settlement!.paymentDate < selectedDate &&
+                    t.settlement!.paymentDate < startDate &&
                     t.settlement!.paymentDate >= initDate
                 );
 
+                let runningSettledBalance = selectedBank?.initialBalance || 0;
+                let runningConciliatedBalance = selectedBank?.initialBalance || 0;
+
                 beforeDate.forEach(t => {
                     const val = t.settlement?.paidValue || t.originalValue || 0;
-                    runningBalance += (t.type === 'receita' ? val : -val);
+                    runningSettledBalance += (t.type === 'receita' ? val : -val);
+                    if (t.status === 'Conciliado' || t.settlement?.isConciled) {
+                        runningConciliatedBalance += (t.type === 'receita' ? val : -val);
+                    }
                 });
 
-                // 2. Transactions settled TODAY (selectedDate)
-                const settledTodayCounted = allSettledInBank.filter(t => 
-                    t.settlement!.paymentDate === selectedDate
+                // 2. Transactions settled WITHIN RANGE [startDate, endDate]
+                const settledInRange = allSettledInBank.filter(t => 
+                    t.settlement!.paymentDate >= startDate &&
+                    t.settlement!.paymentDate <= endDate
                 );
 
-                // Grid Filter: Pending OR settled TODAY in this bank
+                // Grid Filter: Pending OR settled WITHIN RANGE in this bank
                 const filteredForGrid = allTrans.filter(t => {
                     const isActuallyConciled = t.status === 'Conciliado' || t.settlement?.isConciled;
                     const isPending = !isActuallyConciled && (t.status === 'Pendente' || t.status === 'Pago' || t.status === 'Recebido');
-                    const isSettledTodayInThisBank = t.settlement?.bankId === selectedBankId && t.settlement?.paymentDate === selectedDate;
+                    const isSettledInRangeInThisBank = t.settlement?.bankId === selectedBankId && 
+                        t.settlement!.paymentDate >= startDate && 
+                        t.settlement!.paymentDate <= endDate;
                     
                     if (t.settlement?.bankId && t.settlement.bankId !== selectedBankId) return false;
-                    return isPending || isSettledTodayInThisBank;
+                    return isPending || isSettledInRangeInThisBank;
                 });
 
                 // Sort
                 filteredForGrid.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
                 setSystemTransactions(filteredForGrid);
 
-                // 3. Today's Summary
-                let inflow = 0;
-                let outflow = 0;
-                let conciliatedTotal = 0;
+                // 3. Period Summary
+                let inflowSettled = 0;
+                let outflowSettled = 0;
+                let inflowConciliated = 0;
+                let outflowConciliated = 0;
                 
-                settledTodayCounted.forEach(t => {
+                settledInRange.forEach(t => {
                     const val = t.settlement?.paidValue || t.originalValue || 0;
-                    if (t.type === 'receita') inflow += val;
-                    else outflow += val;
+                    if (t.type === 'receita') inflowSettled += val;
+                    else outflowSettled += val;
                     
                     if (t.status === 'Conciliado' || t.settlement?.isConciled) {
-                        conciliatedTotal += (t.type === 'receita' ? val : -val);
+                        if (t.type === 'receita') inflowConciliated += val;
+                        else outflowConciliated += val;
                     }
                 });
 
                 setDailySummary(prev => ({
                     ...prev,
-                    initial: runningBalance,
-                    inflow,
-                    outflow,
-                    final: runningBalance + inflow - outflow,
-                    conciliatedTotal
+                    initial: runningSettledBalance,
+                    inflow: inflowSettled,
+                    outflow: outflowSettled,
+                    final: runningSettledBalance + inflowSettled - outflowSettled,
+                    conciliatedTotal: runningConciliatedBalance + inflowConciliated - outflowConciliated
                 }));
 
             } catch (error) {
@@ -245,7 +257,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
         });
 
         return () => unsubscribe();
-    }, [selectedClientId, selectedBankId, selectedDate, banks]);
+    }, [selectedClientId, selectedBankId, startDate, endDate, banks]);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -349,7 +361,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
             alert('Selecione uma conta bancária primeiro.');
             return;
         }
-        if (!confirm(`Deseja liquidar este título manualmente como ${transaction.type === 'receita' ? 'Recebido' : 'Pago'} em ${formatDateBr(selectedDate)}?`)) return;
+        if (!confirm(`Deseja liquidar este título manualmente como ${transaction.type === 'receita' ? 'Recebido' : 'Pago'} em ${formatDateBr(endDate)}?`)) return;
 
         try {
             const transRef = doc(db, 'transactions', transaction.id);
@@ -357,7 +369,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 status: transaction.type === 'receita' ? 'Recebido' : 'Pago',
                 settlement: {
                     bankId: selectedBankId,
-                    paymentDate: selectedDate,
+                    paymentDate: endDate,
                     paidValue: transaction.originalValue,
                     settledAt: serverTimestamp(),
                     isConciled: true
@@ -385,7 +397,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
             const reader = new FileReader();
             reader.onload = async (event) => {
                 const base64 = event.target?.result as string;
-                const monthYear = selectedDate.substring(0, 7); // YYYY-MM
+                const monthYear = endDate.substring(0, 7); // YYYY-MM
 
                 await addDoc(collection(db, 'bankStatements'), {
                     clientId: selectedClientId,
@@ -394,7 +406,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     pdfContent: base64,
                     fileName: file.name,
                     uploadDate: new Date().toISOString(),
-                    refDate: selectedDate
+                    refDate: endDate
                 });
                 
                 alert('Extrato PDF anexado com sucesso!');
@@ -486,7 +498,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     status: st.type === 'receita' ? 'Recebido' : 'Pago',
                     settlement: {
                         bankId: selectedBankId,
-                        paymentDate: selectedDate,
+                        paymentDate: endDate,
                         paidValue: effectiveValueForSettlement,
                         settledAt: serverTimestamp(),
                         isConciled: true
@@ -570,16 +582,32 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 </div>
 
                 {/* Date Ranges */}
-                <div className="space-y-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Data de Referência</label>
-                    <div className="relative">
-                        <CalendarIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
-                        <input 
-                            type="date" 
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                        />
+                <div className="space-y-4 pt-2">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Período de Baixa</label>
+                    <div className="space-y-3">
+                        <div className="relative">
+                            <CalendarIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input 
+                                type="date" 
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 rounded-xl text-[10px] font-bold text-slate-700 border border-slate-100 focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            />
+                        </div>
+                        <div className="flex items-center justify-center">
+                            <div className="h-[1px] flex-1 bg-slate-100" />
+                            <span className="px-2 text-[8px] font-black text-slate-300 uppercase">Até</span>
+                            <div className="h-[1px] flex-1 bg-slate-100" />
+                        </div>
+                        <div className="relative">
+                            <CalendarIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+                            <input 
+                                type="date" 
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2.5 bg-slate-50 rounded-xl text-[10px] font-bold text-slate-700 border border-slate-100 focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                            />
+                        </div>
                     </div>
                 </div>
 
@@ -682,12 +710,12 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                 {/* Top Toolbar (Sankhya Style) */}
                 <header className="bg-slate-100 border-b border-slate-200 p-2 flex items-center gap-4">
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
-                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500">Saldo fim do dia</div>
-                        <div className="px-4 py-1.5 font-black text-slate-700 min-w-[100px]">{formatDateBr(selectedDate)}</div>
+                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter">Período</div>
+                        <div className="px-4 py-1.5 font-black text-slate-700 min-w-[100px]">{formatDateBr(startDate)} - {formatDateBr(endDate)}</div>
                     </div>
 
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
-                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500">Sistema (Real)</div>
+                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter">Saldo Acumulado</div>
                         <div className={cn(
                             "px-4 py-1.5 font-black min-w-[120px]",
                             dailySummary.final >= 0 ? "text-emerald-600" : "text-rose-600"
@@ -695,16 +723,11 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     </div>
 
                     <div className="flex bg-white rounded-lg border border-slate-200 overflow-hidden text-[10px]">
-                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500">Banco</div>
-                        <div className="px-2 py-0.5 flex items-center">
-                            <input 
-                                type="text"
-                                placeholder="0,00"
-                                value={expectedBankBalance}
-                                onChange={(e) => setExpectedBankBalance(e.target.value)}
-                                className="w-24 px-2 py-1 font-black text-slate-700 outline-none"
-                            />
-                        </div>
+                        <div className="px-3 py-1.5 border-r border-slate-100 bg-slate-50 font-bold text-slate-500 uppercase tracking-tighter">Banco</div>
+                        <div className={cn(
+                            "px-4 py-1.5 font-black min-w-[120px]",
+                            dailySummary.conciliatedTotal >= 0 ? "text-emerald-600" : "text-rose-600"
+                        )}>{formatCurrency(dailySummary.conciliatedTotal)}</div>
                     </div>
 
                     <div className="h-6 w-[1px] bg-slate-200 mx-2" />
@@ -778,7 +801,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                                             className="w-3.5 h-3.5 rounded border-slate-200 text-primary focus:ring-primary/20"
                                                         />
                                                     </td>
-                                            <td className="w-24 py-2.5 px-4 font-bold text-slate-400">#{st.id.substring(0, 8)}</td>
+                                            <td className="w-24 py-2.5 px-4 font-bold text-slate-400">{st.docNumber || `ID-${st.id.substring(0,4)}`}</td>
                                             <td className="w-32 py-2.5 px-4 font-black text-slate-500 uppercase tracking-tighter">Financeiro</td>
                                             <td className="w-24 py-2.5 px-4 text-center">
                                                 <button 
@@ -795,7 +818,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                                 </button>
                                             </td>
                                             <td className="w-32 py-2.5 px-4 font-bold text-emerald-600">
-                                                {isConciled ? st.settlement?.paymentDate || selectedDate : '--/--/----'}
+                                                {isConciled ? st.settlement?.paymentDate : '--/--/----'}
                                             </td>
                                             <td className="w-24 py-2.5 px-4 font-black uppercase text-[9px]">
                                                 <span className={st.type === 'receita' ? 'text-emerald-500' : 'text-rose-500'}>
@@ -920,7 +943,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                                     variant="ghost" 
                                                     size="sm" 
                                                     onClick={() => {
-                                                        downloadFile(viewingPdf, `Extrato_${selectedBankId}_${selectedDate}.pdf`);
+                                                        downloadFile(viewingPdf, `Extrato_${selectedBankId}_${endDate}.pdf`);
                                                     }}
                                                     className="text-[10px] font-black uppercase text-slate-500 hover:text-primary"
                                                 >
