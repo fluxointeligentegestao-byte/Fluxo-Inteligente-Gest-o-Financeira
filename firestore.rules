@@ -184,14 +184,25 @@ service cloud.firestore {
     }
 
     match /transactions/{docId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
       allow write: if isAdmin();
     }
 
     match /bankStatements/{statementId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
       allow write: if isAdmin() || (isSignedIn() && incoming().clientId == request.auth.uid);
       allow delete: if isAdmin() || (isSignedIn() && existing().clientId == request.auth.uid);
+    }
+
+    match /bankReconciliations/{clientId} {
+      allow read: if isSignedIn() && (clientId == request.auth.uid || isAdmin());
+      allow write: if isAdmin() || (isSignedIn() && clientId == request.auth.uid);
+      
+      match /{monthYear}/{bankId} {
+        allow read: if isSignedIn() && (clientId == request.auth.uid || isAdmin());
+        allow write: if isAdmin() || (isSignedIn() && clientId == request.auth.uid);
+      }
     }
 
     match /chartOfAccounts/{docId} {
@@ -203,7 +214,8 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     match /banks/{docId} {
-      allow read: if isSignedIn();
+      allow get: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.clientId == request.auth.uid || isAdmin());
       allow write: if isAdmin();
     }
     match /partners/{docId} {

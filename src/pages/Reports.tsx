@@ -363,6 +363,7 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
                                 <ReconciliationReport 
                                     clientId={reportClientId} 
                                     clientName={isAdmin ? (clients.find(c => c.id === reportClientId)?.name || 'Cliente') : (profile?.name || 'Cliente')} 
+                                    readOnly={true}
                                 />
                             ) : (
                                 <Card className="p-12 text-center bg-slate-50 border-dashed border-slate-200">

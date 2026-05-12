@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, doc, setDoc } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { 
     Download, 
     Calendar, 
@@ -13,7 +13,8 @@ import {
     ArrowDownLeft,
     Check,
     X,
-    Eye
+    Eye,
+    Printer
 } from 'lucide-react';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
@@ -39,9 +40,10 @@ interface BankSummary {
 interface ReconciliationReportProps {
     clientId: string;
     clientName: string;
+    readOnly?: boolean;
 }
 
-export const ReconciliationReport = ({ clientId, clientName }: ReconciliationReportProps) => {
+export const ReconciliationReport = ({ clientId, clientName, readOnly = false }: ReconciliationReportProps) => {
     const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
     const [loading, setLoading] = useState(false);
     const [summaries, setSummaries] = useState<BankSummary[]>([]);
@@ -55,7 +57,8 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
         setLoading(true);
         try {
             // 1. Get all banks
-            const banksSnap = await getDocs(collection(db, 'banks'));
+            const banksRef = query(collection(db, 'banks'), where('clientId', '==', clientId));
+            const banksSnap = await getDocs(banksRef);
             const banks = banksSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             // 2. Get statement balances for this month
@@ -70,7 +73,8 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
             const transRef = collection(db, 'transactions');
             const q = query(
                 transRef,
-                where('status', 'in', ['Pago', 'Recebido']),
+                where('clientId', '==', clientId),
+                where('status', 'in', ['Pago', 'Recebido', 'Conciliado']),
                 orderBy('settlement.paymentDate', 'asc')
             );
             const transSnap = await getDocs(q);
@@ -79,6 +83,7 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
             // 4. Get pending transactions 
             const qPending = query(
                 transRef,
+                where('clientId', '==', clientId),
                 where('status', '==', 'Pendente')
             );
             const pendingSnap = await getDocs(qPending);
@@ -147,6 +152,7 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
             setSummaries(bankSummaries);
         } catch (error) {
             console.error("Error generating reconciliation report:", error);
+            handleFirestoreError(error, OperationType.GET, 'multiple-collections-reconciliation');
         } finally {
             setLoading(false);
         }
@@ -160,6 +166,7 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
             
             setSummaries(prev => prev.map(s => s.id === bankId ? { ...s, statementBalance: value } : s));
         } catch (error) {
+            handleFirestoreError(error, OperationType.WRITE, `bankReconciliations/${clientId}/${currentMonth}/${bankId}`);
             console.error("Error saving statement balance:", error);
         } finally {
             setSaving(null);
@@ -345,23 +352,35 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
                             type="month" 
                             value={currentMonth}
                             onChange={(e) => setCurrentMonth(e.target.value)}
-                            className="px-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                            className={cn(
+                                "px-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all",
+                                readOnly && "no-print"
+                            )}
                         />
                         <Button 
                             variant="outline"
                             onClick={() => generatePDF(undefined, 'preview')}
                             disabled={loading || summaries.length === 0}
-                            className="rounded-2xl h-12 px-6 border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+                            className="rounded-2xl h-12 px-6 border-slate-200 text-slate-600 font-bold hover:bg-slate-50 no-print"
                         >
                             <Eye size={18} className="mr-2" /> Visualizar
                         </Button>
                         <Button 
                             onClick={() => generatePDF(undefined, 'download')}
                             disabled={loading || summaries.length === 0}
-                            className="rounded-2xl h-12 px-6 shadow-xl shadow-primary/20 bg-slate-900"
+                            className="rounded-2xl h-12 px-6 shadow-xl shadow-primary/20 bg-slate-900 no-print"
                         >
                             <Download size={18} className="mr-2" /> Baixar PDF
                         </Button>
+                        {readOnly && (
+                            <Button 
+                                variant="outline"
+                                onClick={() => window.print()}
+                                className="rounded-2xl h-12 px-6 border-slate-200 text-slate-600 font-bold hover:bg-slate-50 no-print"
+                            >
+                                <Printer size={18} className="mr-2" /> Imprimir
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -450,22 +469,28 @@ export const ReconciliationReport = ({ clientId, clientName }: ReconciliationRep
                                     <div className="lg:w-1/3 bg-slate-50/50 -m-6 p-6 flex flex-col justify-center gap-4">
                                         <div>
                                             <label className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2 block">Saldo do Extrato Bancário</label>
-                                            <div className="relative">
-                                                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">R$</span>
-                                                <input 
-                                                    type="number" 
-                                                    step="0.01"
-                                                    defaultValue={summary.statementBalance}
-                                                    onBlur={(e) => updateStatementBalance(summary.id, parseFloat(e.target.value) || 0)}
-                                                    className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-900 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                                    placeholder="0,00"
-                                                />
-                                                {saving === summary.id && (
-                                                    <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                                        <div className="w-3 h-3 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
-                                                    </div>
-                                                )}
-                                            </div>
+                                            {readOnly ? (
+                                                <div className="w-full px-4 py-3 bg-white border border-slate-100 rounded-2xl text-sm font-black text-slate-900">
+                                                    {formatCurrency(summary.statementBalance)}
+                                                </div>
+                                            ) : (
+                                                <div className="relative">
+                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">R$</span>
+                                                    <input 
+                                                        type="number" 
+                                                        step="0.01"
+                                                        defaultValue={summary.statementBalance}
+                                                        onBlur={(e) => updateStatementBalance(summary.id, parseFloat(e.target.value) || 0)}
+                                                        className="w-full pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black text-slate-900 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                                                        placeholder="0,00"
+                                                    />
+                                                    {saving === summary.id && (
+                                                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                                            <div className="w-3 h-3 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="pt-2 border-t border-slate-100">

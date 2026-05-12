@@ -140,6 +140,15 @@
         "refDate": { "type": "string", "format": "date" }
       },
       "required": ["clientId", "bankId", "monthYear", "pdfContent"]
+    },
+    "bankReconciliation": {
+      "title": "Bank Reconciliation Data",
+      "description": "Stored reconciliation data like statement balances.",
+      "type": "object",
+      "properties": {
+        "statementBalance": { "type": "number" }
+      },
+      "required": ["statementBalance"]
     }
   },
   "firestore": {
@@ -153,6 +162,7 @@
     "/payments/{paymentId}": { "schema": "payment", "description": "Monthly subscription payments from clients" },
     "/system_configs/{configId}": { "schema": "object", "description": "System-wide configurations" },
     "/bankStatements/{statementId}": { "schema": "bankStatement", "description": "PDF bank statements" },
+    "/bankReconciliations/{clientId}/{month}/{bankId}": { "schema": "bankReconciliation", "description": "Reconciliation data per bank/month" },
     "/transactions/{transactionId}": { "schema": "object", "description": "Main financial transactions" },
     "/banks/{bankId}": { "schema": "object", "description": "Bank account configurations" },
     "/partners/{partnerId}": { "schema": "object", "description": "Customers and Suppliers" },

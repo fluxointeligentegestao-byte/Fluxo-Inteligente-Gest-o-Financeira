@@ -76,6 +76,8 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
   });
 
   const [clients, setClients] = useState<any[]>([]);
+  const [banks, setBanks] = useState<any[]>([]);
+  const [bankMovements, setBankMovements] = useState<Record<string, { in: number, out: number }>>({});
   const [searchTerm, setSearchTerm] = useState('');
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +97,43 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
       if (!activeId) return;
 
       const currentMonth = new Date().toISOString().substring(0, 7);
+
+      // Real-time banks for this client
+      const banksRef = query(collection(db, 'banks'), where('clientId', '==', activeId));
+      const unsubBanks = onSnapshot(banksRef, (snapshot) => {
+        const banksList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setBanks(banksList);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'banks');
+      });
+
+      // Get transactions for this month to show movement per bank
+      const transRef = collection(db, 'transactions');
+      const qTrans = query(
+        transRef,
+        where('clientId', '==', activeId),
+        where('status', 'in', ['Pago', 'Recebido', 'Conciliado']),
+        where('settlement.paymentDate', '>=', `${currentMonth}-01`),
+        where('settlement.paymentDate', '<=', `${currentMonth}-31`)
+      );
+
+      const unsubTrans = onSnapshot(qTrans, (snapshot) => {
+        const movements: Record<string, { in: number, out: number }> = {};
+        snapshot.docs.forEach(doc => {
+          const t = doc.data();
+          const bankId = t.settlement?.bankId;
+          if (!bankId) return;
+          
+          if (!movements[bankId]) movements[bankId] = { in: 0, out: 0 };
+          const val = t.settlement?.paidValue || 0;
+          if (t.type === 'receita') movements[bankId].in += val;
+          else movements[bankId].out += val;
+        });
+        setBankMovements(movements);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.GET, 'transactions-dashboard');
+      });
+
       const path = `financialAgenda/${activeId}/entries`;
       const q = query(collection(db, path), where('month', '==', currentMonth));
       
@@ -112,7 +151,11 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
         console.error("Error listening to financialAgenda:", error);
         handleFirestoreError(error, OperationType.GET, path);
       });
-      return () => unsubscribe();
+      return () => {
+        unsubscribe();
+        unsubBanks();
+        unsubTrans();
+      };
     }
   }, [profile, user, showAdminView, isPreviewMode, selectedClientId]);
 
@@ -446,36 +489,100 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
       </div>
 
       {/* Real-time Stats for Client */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
-              <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                      <ArrowUpCircle size={18} />
-                  </div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Receber (Mês)</span>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+          <div className="lg:col-span-1 space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                  <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
+                      <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                              <ArrowUpCircle size={18} />
+                          </div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Receber (Mês)</span>
+                      </div>
+                      <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToReceive)}</h3>
+                  </Card>
+                  <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
+                      <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                              <ArrowDownCircle size={18} />
+                          </div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Mês)</span>
+                      </div>
+                      <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToPay)}</h3>
+                  </Card>
+                  <Card className={cn(
+                      "p-5 border-none shadow-xl shadow-slate-200/20 group hover:translate-y-[-2px] transition-all",
+                      stats.clientBalance >= 0 ? "bg-slate-900 text-white" : "bg-rose-600 text-white"
+                  )}>
+                      <div className="flex items-center gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-white/10 text-white flex items-center justify-center">
+                              <TrendingUp size={18} />
+                          </div>
+                          <span className="text-[9px] font-black text-white/50 uppercase tracking-widest">Fluxo de Caixa</span>
+                      </div>
+                      <h3 className="text-xl font-black">{formatCurrency(stats.clientBalance)}</h3>
+                  </Card>
               </div>
-              <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToReceive)}</h3>
-          </Card>
-          <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
-              <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                      <ArrowDownCircle size={18} />
+          </div>
+
+          <Card className="lg:col-span-3 p-6 border-none shadow-xl shadow-slate-200/20 bg-white flex flex-col h-full">
+              <div className="flex items-center justify-between mb-6">
+                  <div>
+                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Saldos Bancários Conciliados</h3>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Dados reais integrados</p>
                   </div>
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Mês)</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-[9px] font-black uppercase tracking-widest text-primary h-8"
+                    onClick={() => setActiveTab('reconciliation')}
+                  >
+                    Conciliar Novo Extrato
+                  </Button>
               </div>
-              <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToPay)}</h3>
-          </Card>
-          <Card className={cn(
-              "p-5 border-none shadow-xl shadow-slate-200/20 group hover:translate-y-[-2px] transition-all",
-              stats.clientBalance >= 0 ? "bg-slate-900 text-white" : "bg-rose-600 text-white"
-          )}>
-              <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 rounded-lg bg-white/10 text-white flex items-center justify-center">
-                      <TrendingUp size={18} />
-                  </div>
-                  <span className="text-[9px] font-black text-white/50 uppercase tracking-widest">Fluxo de Caixa</span>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
+                  {banks.length === 0 ? (
+                      <div className="col-span-full py-12 text-center text-slate-300">
+                          <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
+                          <p className="text-[10px] font-black uppercase tracking-widest leading-none">Nenhuma conta cadastrada</p>
+                      </div>
+                  ) : (
+                      banks.map((bank) => (
+                          <div 
+                            key={bank.id}
+                            className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-primary/20 hover:bg-white transition-all group"
+                          >
+                              <div className="flex items-center justify-between mb-3">
+                                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-primary shadow-sm group-hover:scale-110 transition-all">
+                                      <CreditCard size={14} />
+                                  </div>
+                                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest transition-colors group-hover:text-primary/50">Disponível</span>
+                              </div>
+                              <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate mb-1">
+                                  {bank.name}
+                              </h4>
+                              <p className="text-lg font-black text-slate-900 mb-2">
+                                  {formatCurrency(bank.balance || 0)}
+                              </p>
+                              <div className="flex items-center gap-4 pt-3 border-t border-slate-100/50">
+                                  <div className="flex flex-col">
+                                      <span className="text-[7px] font-black text-emerald-500 uppercase tracking-widest">Entradas</span>
+                                      <span className="text-[9px] font-bold text-slate-700">
+                                          {formatCurrency(bankMovements[bank.id]?.in || 0)}
+                                      </span>
+                                  </div>
+                                  <div className="flex flex-col">
+                                      <span className="text-[7px] font-black text-rose-500 uppercase tracking-widest">Saídas</span>
+                                      <span className="text-[9px] font-bold text-slate-700">
+                                          {formatCurrency(bankMovements[bank.id]?.out || 0)}
+                                      </span>
+                                  </div>
+                              </div>
+                          </div>
+                      ))
+                  )}
               </div>
-              <h3 className="text-xl font-black">{formatCurrency(stats.clientBalance)}</h3>
           </Card>
       </div>
 

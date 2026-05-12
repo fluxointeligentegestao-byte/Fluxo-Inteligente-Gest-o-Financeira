@@ -530,6 +530,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     // Se já estava conciliado, apenas remove o flag de conciliação e ajusta o saldo do banco
                     // Mantém a baixa (status Recebido/Pago e os dados do settlement)
                     txn.update(transRef, {
+                        status: st.type === 'receita' ? 'Recebido' : 'Pago',
                         'settlement.isConciled': false,
                         updatedAt: serverTimestamp()
                     });
@@ -539,6 +540,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     // Se já estava baixado (settlement existe), preservamos os dados e só mudamos o flag.
                     if (st.settlement) {
                         txn.update(transRef, {
+                            status: 'Conciliado',
                             'settlement.isConciled': true,
                             'settlement.bankId': selectedBankId, // Garante que é o banco selecionado
                             updatedAt: serverTimestamp()
@@ -546,7 +548,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     } else {
                         // Se era Pendente, realiza a baixa e a conciliação simultaneamente
                         txn.update(transRef, {
-                            status: st.type === 'receita' ? 'Recebido' : 'Pago',
+                            status: 'Conciliado',
                             settlement: {
                                 bankId: selectedBankId,
                                 paymentDate: endDate,
@@ -733,34 +735,35 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                     </div>
                 </div>
 
-                {/* PDF Statement Action */}
-                {bankStatements.length > 0 && (
-                    <div className="space-y-2 pt-4 border-t border-slate-50">
-                        <Button 
-                            variant="ghost"
-                            onClick={() => setViewingPdf(bankStatements[0].pdfContent)}
-                            className="w-full justify-start gap-3 bg-primary/5 hover:bg-primary/10 text-primary border border-primary/10 py-3 rounded-xl"
-                        >
-                            <Eye size={18} />
-                            <span className="text-[10px] font-black uppercase tracking-tight">Mostrar Extrato PDF</span>
-                        </Button>
-                    </div>
-                )}
+                {/* Export/Import section */}
+                <div className="mt-auto pt-6 border-t border-slate-50 space-y-4">
+                    {bankStatements.length > 0 && (
+                        <div className="space-y-2">
+                            <Button 
+                                variant="ghost"
+                                onClick={() => setViewingPdf(bankStatements[0].pdfContent)}
+                                className="w-full justify-start gap-3 bg-primary/5 hover:bg-primary/10 text-primary border border-primary/10 py-3 rounded-xl"
+                            >
+                                <Eye size={18} />
+                                <span className="text-[10px] font-black uppercase tracking-tight">Mostrar Extrato PDF</span>
+                            </Button>
+                        </div>
+                    )}
 
-                {/* Import section */}
-                <div className="mt-auto pt-6 border-t border-slate-50 space-y-3">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Importar Extratos</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                        <label className="flex flex-col items-center justify-center p-3 bg-primary/5 hover:bg-primary/10 text-primary border border-primary/10 rounded-xl cursor-pointer transition-all group">
-                            <Upload size={16} className="mb-1 group-hover:scale-110 transition-transform" />
-                            <span className="text-[8px] font-black uppercase">CSV</span>
-                            <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
-                        </label>
-                        <label className="flex flex-col items-center justify-center p-3 bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-100 rounded-xl cursor-pointer transition-all group">
-                            <FileText size={16} className="mb-1 group-hover:scale-110 transition-transform" />
-                            <span className="text-[8px] font-black uppercase">PDF</span>
-                            <input type="file" accept=".pdf" onChange={handlePdfUpload} className="hidden" />
-                        </label>
+                    <div className="space-y-3">
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Importar Extratos</h3>
+                        <div className="grid grid-cols-2 gap-2">
+                            <label className="flex flex-col items-center justify-center p-3 bg-primary/5 hover:bg-primary/10 text-primary border border-primary/10 rounded-xl cursor-pointer transition-all group">
+                                <Upload size={16} className="mb-1 group-hover:scale-110 transition-transform" />
+                                <span className="text-[8px] font-black uppercase">CSV</span>
+                                <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden" />
+                            </label>
+                            <label className="flex flex-col items-center justify-center p-3 bg-rose-50 hover:bg-rose-100 text-rose-500 border border-rose-100 rounded-xl cursor-pointer transition-all group">
+                                <FileText size={16} className="mb-1 group-hover:scale-110 transition-transform" />
+                                <span className="text-[8px] font-black uppercase">PDF</span>
+                                <input type="file" accept=".pdf" onChange={handlePdfUpload} className="hidden" />
+                            </label>
+                        </div>
                     </div>
                 </div>
 

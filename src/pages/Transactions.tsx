@@ -71,7 +71,7 @@ interface FinancialTransaction {
     description: string;
     issueDate: string;
     observation: string;
-    status: 'Pendente' | 'Pago' | 'Recebido' | 'Vencido';
+    status: 'Pendente' | 'Pago' | 'Recebido' | 'Vencido' | 'Conciliado';
     settlement?: {
         paymentDate: string;
         paidValue: number;
@@ -129,6 +129,8 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
 
     // Helper to calculate dynamic status
     const getDynamicStatus = (t: FinancialTransaction) => {
+        if (t.status === 'Conciliado') return 'Conciliado';
+        
         if (t.status === 'Pago' || t.status === 'Recebido') {
             return t.type === 'receita' ? 'Recebido' : 'Pago';
         }
@@ -785,6 +787,7 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                             <option value="vencido">Vencido</option>
                                             <option value="pago">Pago</option>
                                             <option value="recebido">Recebido</option>
+                                            <option value="conciliado">Conciliado</option>
                                         </select>
                                     </div>
                                 </th>
@@ -864,6 +867,7 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                                     "text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-md whitespace-nowrap",
                                                     dynamicStatus === 'Recebido' && "bg-emerald-50 text-emerald-600",
                                                     dynamicStatus === 'Pago' && "bg-slate-50 text-slate-600",
+                                                    dynamicStatus === 'Conciliado' && "bg-indigo-50 text-indigo-600",
                                                     dynamicStatus === 'Vencido' && "bg-rose-50 text-rose-600",
                                                     dynamicStatus === 'Vence hoje' && "bg-amber-50 text-amber-600",
                                                     dynamicStatus === 'à vencer' && "bg-sky-50 text-sky-600",
