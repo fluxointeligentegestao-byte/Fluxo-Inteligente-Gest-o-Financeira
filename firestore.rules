@@ -26,8 +26,8 @@ service cloud.firestore {
     function isAdmin() {
       // Identity lookup from the source of truth or master admin email
       return isSignedIn() && (
-        request.auth.token.email == "fluxointeligente.gestao@gmail.com" ||
-        request.auth.token.email == "suporte@fluxointeligente.com.br" ||
+        request.auth.token.email.lower() == "fluxointeligente.gestao@gmail.com" ||
+        request.auth.token.email.lower() == "suporte@fluxointeligente.com.br" ||
         (exists(/databases/$(database)/documents/userProfiles/$(request.auth.uid)) && 
          get(/databases/$(database)/documents/userProfiles/$(request.auth.uid)).data.get('role', '') == 'admin')
       );
@@ -196,12 +196,10 @@ service cloud.firestore {
     }
 
     match /bankReconciliations/{clientId} {
-      allow read: if isSignedIn() && (clientId == request.auth.uid || isAdmin());
-      allow write: if isAdmin() || (isSignedIn() && clientId == request.auth.uid);
+      allow read, write: if isSignedIn() && (clientId == request.auth.uid || isAdmin());
       
-      match /{monthYear}/{bankId} {
-        allow read: if isSignedIn() && (clientId == request.auth.uid || isAdmin());
-        allow write: if isAdmin() || (isSignedIn() && clientId == request.auth.uid);
+      match /{allSubcollections=**} {
+        allow read, write: if isSignedIn() && (clientId == request.auth.uid || isAdmin());
       }
     }
 

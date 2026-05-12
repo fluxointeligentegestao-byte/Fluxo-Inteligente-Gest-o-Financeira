@@ -29,6 +29,7 @@ import { useClient } from '../context/ClientContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { normalizeDate, getYearMonth } from '../lib/dateUtils';
 import { 
     collection, 
     query, 
@@ -162,24 +163,29 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
 
         const path = `financialAgenda/${activeClientId}/entries`;
         try {
+            // Normalize date to YYYY-MM-DD
+            const dateStr = newEntry.date || new Date().toISOString().substring(0, 10);
+            const month = dateStr.substring(0, 7);
+            
             await addDoc(collection(db, path), {
                 ...newEntry,
+                date: dateStr,
                 clientId: activeClientId,
-                month: currentMonth,
+                month: month,
                 createdAt: serverTimestamp()
             });
             setIsAddModalOpen(false);
-                setNewEntry({
-                    type: 'pagar',
-                    status: 'Pendente',
-                    date: new Date().toISOString().substring(0, 10),
-                    value: 0,
-                    description: '',
-                    category: 'Geral',
-                    accountId: '',
-                    costCenterId: '',
-                    observation: ''
-                });
+            setNewEntry({
+                type: 'pagar',
+                status: 'Pendente',
+                date: new Date().toISOString().substring(0, 10),
+                value: 0,
+                description: '',
+                category: 'Geral',
+                accountId: '',
+                costCenterId: '',
+                observation: ''
+            });
         } catch (error) {
             handleFirestoreError(error, OperationType.WRITE, path);
         }
@@ -199,21 +205,26 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
 
                 for (const row of results.data as any) {
                     try {
-                        // Tenta encontrar campos comuns de extratos bancários (Data, Descrição, Valor)
                         const rawValue = row.valor || row.Valor || row.Value || row.Amount || row.amount;
-                        const value = parseFloat(String(rawValue).replace(',', '.'));
+                        const valueStr = String(rawValue).replace(/[^\d.,-]/g, '').replace(',', '.');
+                        const value = parseFloat(valueStr);
                         
                         if (isNaN(value)) continue;
 
-                        const dateStr = row.data || row.Data || row.Date || new Date().toISOString().substring(0, 10);
-                        const description = row.descricao || row.Descrição || row.Description || row.Memo;
+                        const rawDate = row.data || row.Data || row.Date || row.Data_Vencimento || '';
+                        const normalizedDate = normalizeDate(rawDate);
+                        
+                        if (!normalizedDate) continue;
+
+                        const entryMonth = getYearMonth(normalizedDate);
+                        const description = row.descricao || row.Descrição || row.Description || row.Memo || row.Historico || row.Histórico;
 
                         await addDoc(collection(db, path), {
                             description: description || 'Lançamento Importado',
                             type: value < 0 ? 'pagar' : 'receber',
                             value: Math.abs(value),
-                            date: dateStr,
-                            month: currentMonth,
+                            date: normalizedDate,
+                            month: entryMonth,
                             status: value < 0 ? 'Pago' : 'Recebido',
                             category: 'Conciliação',
                             observation: 'Importado via CSV',
@@ -225,7 +236,7 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
                         console.error("Erro ao importar linha:", err);
                     }
                 }
-                alert(`${count} lançamentos conciliados com sucesso!`);
+                alert(`${count} lançamentos importados com sucesso!`);
                 setImporting(false);
             },
             error: (err) => {
@@ -249,7 +260,10 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
     const today = new Date();
 
     // Calculations and Metrics for Report
-    const monthlyEntries = entries.filter(e => e.month === currentMonth);
+    const monthlyEntries = entries.filter(e => {
+        const entryMonth = getYearMonth(e.date || e.month);
+        return entryMonth === currentMonth;
+    });
     const receivables = monthlyEntries.filter(e => e.type === 'receber');
     const payables = monthlyEntries.filter(e => e.type === 'pagar');
 
@@ -1220,7 +1234,15 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Plano de Contas</label>
                                         <select 
                                             value={newEntry.accountId}
-                                            onChange={(e) => setNewEntry({...newEntry, accountId: e.target.value})}
+                                            onChange={(e) => {
+                                                const accId = e.target.value;
+                                                const acc = effectiveAccounts.find(a => a.id === accId);
+                                                setNewEntry({
+                                                    ...newEntry, 
+                                                    accountId: accId,
+                                                    category: acc ? acc.name : newEntry.category
+                                                });
+                                            }}
                                             className="w-full px-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 border border-transparent focus:border-primary/20 transition-all"
                                         >
                                             <option value="">Selecione uma conta...</option>

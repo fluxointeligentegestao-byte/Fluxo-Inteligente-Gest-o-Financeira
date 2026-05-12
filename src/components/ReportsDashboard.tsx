@@ -46,6 +46,14 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { 
+    collection, 
+    query, 
+    onSnapshot, 
+    orderBy 
+} from 'firebase/firestore';
+import { UNIVERSAL_CHART_OF_ACCOUNTS } from '../constants/financial';
 
 // --- Types ---
 interface Widget {
@@ -154,65 +162,157 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
     const [isDownloading, setIsDownloading] = useState(false);
     const dashboardRef = useRef<HTMLDivElement>(null);
     const printRef = useRef<HTMLDivElement>(null);
+    const [entries, setEntries] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
     
+    const formatCurrency = (val: number) => {
+        return new Intl.NumberFormat('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        }).format(val);
+    };
+
     const [activeFilters, setActiveFilters] = useState({
-        period: '2024-04',
+        period: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
         category: 'all',
         type: 'all',
         view: 'complet'
     });
 
-    const dreData = [
-        { label: 'Receita Bruta', current: '43.876,67', previous: '39.100,00', variation: '12,2%', bold: false, color: "emerald" as const },
-        { label: '(-) Impostos / Deduções', current: '-1.387,89', previous: '(1.623,45)', variation: '(14,5%)', bold: false, color: "rose" as const },
-        { label: 'Receita Líquida', current: '42.488,78', previous: '37.476,55', variation: '13,4%', bold: true, color: "dark" as const },
-        { label: '(-) Custos Diretos', current: '0,00', previous: '0,00', variation: '—', bold: false },
-        { label: 'Lucro Bruto', current: '42.488,78', previous: '37.476,55', variation: '13,4%', bold: true, color: "dark" as const },
-        { label: '(-) Desp. Operacionais', current: '-33.482,63', previous: '(31.136,72)', variation: '7,5%', bold: false, color: "rose" as const },
-        { label: 'EBITDA', current: '9.006,15', previous: '6.339,83', variation: '42,1%', bold: true, color: "emerald" as const },
-        { label: 'Resultado Financeiro', current: '0,00', previous: '0,00', variation: '—', bold: false },
-        { label: '(-) IRPJ / CSLL', current: '-1.387,89', previous: '(1.623,45)', variation: '(14,5%)', bold: false, color: "rose" as const },
-        { label: 'Lucro Líquido', current: '7.618,26', previous: '4.716,38', variation: '61,5%', bold: true, color: "emerald" as const },
-    ];
+    useEffect(() => {
+        if (!clientId) return;
+        setLoading(true);
+        const path = `financialAgenda/${clientId}/entries`;
+        const q = query(collection(db, path), orderBy('date', 'desc'));
 
-    const cashFlowMonths = [
-        { month: 'Jan', in: '25.858,47', out: '10.642,09', res: '15.216,38' },
-        { month: 'Fev', in: '29.453,83', out: '27.583,58', res: '1.870,25' },
-        { month: 'Mar', in: '35.300,00', out: '31.725,47', res: '3.574,53' },
-        { month: 'Abr', in: '10.100,00', out: '21.943,61', res: '-11.843,61' },
-        { month: 'Mai', in: '40.600,00', out: '33.972,40', res: '6.627,60' },
-        { month: 'Jun', in: '40.600,00', out: '33.806,50', res: '6.793,50' },
-        { month: 'Jul', in: '41.100,00', out: '36.761,82', res: '4.338,18' },
-        { month: 'Ago', in: '41.100,00', out: '37.075,88', res: '4.024,12' },
-        { month: 'Set', in: '34.100,00', out: '34.759,28', res: '-659,28' },
-        { month: 'Out', in: '38.100,00', out: '37.456,79', res: '643,21' },
-        { month: 'Nov', in: '37.850,00', out: '33.896,61', res: '3.953,39' },
-        { month: 'Dez', in: '40.850,00', out: '36.652,86', res: '4.197,14' },
-    ];
+        const unsubscribe = onSnapshot(q, (snap) => {
+            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setEntries(list);
+            setLoading(false);
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, path);
+            setLoading(false);
+        });
 
-    // Evolution Data (Bar + Line)
-    const evolutionData = [
-        { name: 'Jan', entries: 25858, exits: 10642, saldo: 15216 },
-        { name: 'Fev', entries: 29453, exits: 27583, saldo: 1870 },
-        { name: 'Mar', entries: 35300, exits: 31725, saldo: 3574 },
-        { name: 'Abr', entries: 10100, exits: 21943, saldo: -11843 },
-        { name: 'Mai', entries: 40600, exits: 33972, saldo: 6627 },
-        { name: 'Jun', entries: 40600, exits: 33806, saldo: 6793 },
-        { name: 'Jul', entries: 41100, exits: 36761, saldo: 4338 },
-        { name: 'Ago', entries: 41100, exits: 37075, saldo: 4024 },
-        { name: 'Set', entries: 34100, exits: 34759, saldo: -659 },
-        { name: 'Out', entries: 38100, exits: 37456, saldo: 643 },
-        { name: 'Nov', entries: 37850, exits: 33896, saldo: 3953 },
-        { name: 'Dez', entries: 40850, exits: 36652, saldo: 4197 },
-    ];
+        return () => unsubscribe();
+    }, [clientId]);
 
-    const pieData = [
-        { name: 'Pessoal', value: 640 },
-        { name: 'Taxes', value: 140 },
-        { name: 'Marketing', value: 50 },
-        { name: 'TI', value: 90 },
-        { name: 'Admin', value: 80 },
-    ];
+    const getMetrics = (monthYear: string) => {
+        const [year, month] = monthYear.split('-');
+        const monthYearStr = `${year}-${month}`;
+        
+        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+        date.setMonth(date.getMonth() - 1);
+        const prevMonthYearStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
+        const currentMonthEntries = entries.filter(e => e.month === monthYearStr && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado'));
+        const prevMonthEntries = entries.filter(e => e.month === prevMonthYearStr && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado'));
+
+        const sumByAccounts = (list: any[], codes: string[]) => {
+            return list.filter(e => {
+                const acc = UNIVERSAL_CHART_OF_ACCOUNTS.find(a => a.id === e.accountId);
+                if (!acc) return false;
+                return codes.some(code => acc.code.startsWith(code));
+            }).reduce((acc, curr) => acc + curr.value, 0);
+        };
+
+        const calcVar = (curr: number, prev: number) => {
+            if (prev === 0) return curr === 0 ? '0%' : '100.0%';
+            const v = ((curr - prev) / Math.abs(prev)) * 100;
+            return `${v > 0 ? '+' : ''}${v.toFixed(1)}%`.replace('.', ',');
+        };
+
+        const formatC = (val: number) => formatCurrency(val);
+
+        // Calculations Current
+        const revTotal = sumByAccounts(currentMonthEntries, ['1.1', '1.2']);
+        const ded = sumByAccounts(currentMonthEntries, ['1.3', '1.4']);
+        const netRev = revTotal - ded;
+        const costs = sumByAccounts(currentMonthEntries, ['2']);
+        const lb = netRev - costs;
+        const desp = sumByAccounts(currentMonthEntries, ['3']);
+        const ebitda = lb - desp;
+        const recFin = sumByAccounts(currentMonthEntries, ['4.2']);
+        const despFin = sumByAccounts(currentMonthEntries, ['4.1']);
+        const trib = sumByAccounts(currentMonthEntries, ['5']);
+        const ll = ebitda + recFin - despFin - trib;
+
+        // Calculations Prev
+        const pRevTotal = sumByAccounts(prevMonthEntries, ['1.1', '1.2']);
+        const pDed = sumByAccounts(prevMonthEntries, ['1.3', '1.4']);
+        const pNetRev = pRevTotal - pDed;
+        const pCosts = sumByAccounts(prevMonthEntries, ['2']);
+        const pLb = pNetRev - pCosts;
+        const pDesp = sumByAccounts(prevMonthEntries, ['3']);
+        const pEbitda = pLb - pDesp;
+        const pRecFin = sumByAccounts(prevMonthEntries, ['4.2']);
+        const pDespFin = sumByAccounts(prevMonthEntries, ['4.1']);
+        const pTrib = sumByAccounts(prevMonthEntries, ['5']);
+        const pLl = pEbitda + pRecFin - pDespFin - pTrib;
+
+        return {
+            dre: [
+                { label: 'Receita Bruta', current: formatC(revTotal), previous: formatC(pRevTotal), variation: calcVar(revTotal, pRevTotal), bold: false, color: "emerald" as const },
+                { label: '(-) Impostos / Deduções', current: formatC(-ded), previous: `(${formatC(pDed)})`, variation: calcVar(ded, pDed), bold: false, color: "rose" as const },
+                { label: 'Receita Líquida', current: formatC(netRev), previous: formatC(pNetRev), variation: calcVar(netRev, pNetRev), bold: true, color: "dark" as const },
+                { label: '(-) Custos Diretos', current: formatC(-costs), previous: formatC(-pCosts), variation: calcVar(costs, pCosts), bold: false },
+                { label: 'Lucro Bruto', current: formatC(lb), previous: formatC(pLb), variation: calcVar(lb, pLb), bold: true, color: "dark" as const },
+                { label: '(-) Desp. Operacionais', current: formatC(-desp), previous: `(${formatC(pDesp)})`, variation: calcVar(desp, pDesp), bold: false, color: "rose" as const },
+                { label: 'EBITDA', current: formatC(ebitda), previous: formatC(pEbitda), variation: calcVar(ebitda, pEbitda), bold: true, color: "emerald" as const },
+                { label: 'Resultado Financeiro', current: formatC(recFin - despFin), previous: formatC(pRecFin - pDespFin), variation: calcVar(recFin - despFin, pRecFin - pDespFin), bold: false },
+                { label: '(-) IRPJ / CSLL', current: formatC(-trib), previous: `(${formatC(pTrib)})`, variation: calcVar(trib, pTrib), bold: false, color: "rose" as const },
+                { label: 'Lucro Líquido', current: formatC(ll), previous: formatC(pLl), variation: calcVar(ll, pLl), bold: true, color: "emerald" as const },
+            ],
+            metrics: {
+                revenue: revTotal,
+                ebitda: ebitda,
+                ll: ll,
+                margin: revTotal > 0 ? (ll / revTotal) * 100 : 0
+            }
+        };
+    };
+
+    const periodData = getMetrics(activeFilters.period);
+    const dreData = periodData.dre;
+
+    // Cash Flow Months (Full Year)
+    const year = activeFilters.period.split('-')[0];
+    const monthLabels = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+    const cashFlowMonths = monthLabels.map((m, i) => {
+        const mStr = `${year}-${String(i + 1).padStart(2, '0')}`;
+        const mEntries = entries.filter(e => e.month === mStr && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado'));
+        const incoming = mEntries.filter(e => e.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0);
+        const outgoing = mEntries.filter(e => e.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0);
+        return {
+            month: m,
+            in: formatCurrency(incoming),
+            out: formatCurrency(outgoing),
+            res: formatCurrency(incoming - outgoing)
+        };
+    });
+
+    const evolutionData = monthLabels.map((m, i) => {
+        const mStr = `${year}-${String(i + 1).padStart(2, '0')}`;
+        const mEntries = entries.filter(e => e.month === mStr && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado'));
+        const incoming = mEntries.filter(e => e.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0);
+        const outgoing = mEntries.filter(e => e.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0);
+        return {
+            name: m,
+            entries: incoming,
+            exits: outgoing,
+            saldo: incoming - outgoing
+        };
+    });
+
+    // Pie Data - Despesas por Grupo
+    const currentMonthEntries = entries.filter(e => e.month === activeFilters.period && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado') && e.type === 'Despesa');
+    const expensesByGroupMap: Record<string, number> = {};
+    currentMonthEntries.forEach(e => {
+        const acc = UNIVERSAL_CHART_OF_ACCOUNTS.find(a => a.id === e.accountId);
+        const group = acc?.group || 'Outros';
+        expensesByGroupMap[group] = (expensesByGroupMap[group] || 0) + e.value;
+    });
+    const pieData = Object.entries(expensesByGroupMap).map(([name, value]) => ({ name, value }));
 
     const handleDownload = async () => {
         const element = printRef.current;
@@ -284,7 +384,7 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Demonstração do Resultado · Visão Executiva</p>
                         <p className="text-[10px] font-black text-slate-600 uppercase mt-0.5">Cliente: {clientName}</p>
                     </div>
-                    <p className="text-xs font-black text-[#1a365d] uppercase">ABRIL / 2026</p>
+                    <p className="text-xs font-black text-[#1a365d] uppercase">{activeFilters.period.split('-')[1] === '01' ? 'JANEIRO' : activeFilters.period.split('-')[1] === '02' ? 'FEVEREIRO' : activeFilters.period.split('-')[1] === '03' ? 'MARÇO' : activeFilters.period.split('-')[1] === '04' ? 'ABRIL' : activeFilters.period.split('-')[1] === '05' ? 'MAIO' : activeFilters.period.split('-')[1] === '06' ? 'JUNHO' : activeFilters.period.split('-')[1] === '07' ? 'JULHO' : activeFilters.period.split('-')[1] === '08' ? 'AGOSTO' : activeFilters.period.split('-')[1] === '09' ? 'SETEMBRO' : activeFilters.period.split('-')[1] === '10' ? 'OUTUBRO' : activeFilters.period.split('-')[1] === '11' ? 'NOVEMBRO' : 'DEZEMBRO'} / {activeFilters.period.split('-')[0]}</p>
                 </div>
             </header>
 
@@ -292,14 +392,14 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
             <section className="mb-8">
                 <SectionHeader number="1" title="Resumo Executivo" />
                 <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
-                    <MetricCard title="Receita Bruta" value="43.877" variation="12,2%" isPositive={true} icon={BarChart3} isPrint={isPrint} />
-                    <MetricCard title="Lucro Bruto" value="42.489" variation="13,4%" isPositive={true} icon={TrendingUp} isPrint={isPrint} />
-                    <MetricCard title="EBITDA" value="9.006" variation="42,1%" isPositive={true} icon={TrendingUp} isPrint={isPrint} />
-                    <MetricCard title="Lucro Líquido" value="7.618" variation="61,5%" isPositive={true} icon={LayoutDashboard} isPrint={isPrint} />
-                    <MetricCard title="Receita Líquida" value="42.489" variation="13,4%" isPositive={true} icon={DollarSign} isPrint={isPrint} />
-                    <MetricCard title="Margem Bruta" value="96,8%" variation="1,0 p.p." isPositive={true} icon={PieChartIcon} isPrint={isPrint} />
-                    <MetricCard title="Margem EBITDA" value="20,5%" variation="4,3 p.p." isPositive={true} icon={TrendingUp} isPrint={isPrint} />
-                    <MetricCard title="Saldo Caixa" value="13.818" variation="46,2%" isPositive={false} icon={Wallet} isPrint={isPrint} />
+                    <MetricCard title="Receita Bruta" value={formatCurrency(periodData.metrics.revenue).replace('R$ ', '')} variation={periodData.dre[0].variation} isPositive={!periodData.dre[0].variation.includes('-')} icon={BarChart3} isPrint={isPrint} />
+                    <MetricCard title="Lucro Bruto" value={dreData[4].current.replace('R$ ', '')} variation={dreData[4].variation} isPositive={!dreData[4].variation.includes('-')} icon={TrendingUp} isPrint={isPrint} />
+                    <MetricCard title="EBITDA" value={formatCurrency(periodData.metrics.ebitda).replace('R$ ', '')} variation={periodData.dre[6].variation} isPositive={!periodData.dre[6].variation.includes('-')} icon={TrendingUp} isPrint={isPrint} />
+                    <MetricCard title="Lucro Líquido" value={formatCurrency(periodData.metrics.ll).replace('R$ ', '')} variation={periodData.dre[9].variation} isPositive={!periodData.dre[9].variation.includes('-')} icon={LayoutDashboard} isPrint={isPrint} />
+                    <MetricCard title="Receita Líquida" value={dreData[2].current.replace('R$ ', '')} variation={dreData[2].variation} isPositive={!dreData[2].variation.includes('-')} icon={DollarSign} isPrint={isPrint} />
+                    <MetricCard title="Margem Líquida" value={`${periodData.metrics.margin.toFixed(1).replace('.', ',')}%`} variation="—" isPositive={true} icon={PieChartIcon} isPrint={isPrint} />
+                    <MetricCard title="Margem EBITDA" value={`${(periodData.metrics.revenue > 0 ? (periodData.metrics.ebitda / periodData.metrics.revenue) * 100 : 0).toFixed(1).replace('.', ',')}%`} variation="—" isPositive={true} icon={TrendingUp} isPrint={isPrint} />
+                    <MetricCard title="Fluxo de Caixa" value={formatCurrency(evolutionData.find(d => d.name === monthLabels[parseInt(activeFilters.period.split('-')[1]) - 1])?.saldo || 0).replace('R$ ', '')} variation="—" isPositive={(evolutionData.find(d => d.name === monthLabels[parseInt(activeFilters.period.split('-')[1]) - 1])?.saldo || 0) >= 0} icon={Wallet} isPrint={isPrint} />
                 </div>
             </section>
 
@@ -309,19 +409,25 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
                 <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">A Receber</p>
-                        <p className="text-xl font-black text-slate-900">314.300</p>
+                        <p className="text-xl font-black text-slate-900">{formatCurrency(entries.filter(e => e.type === 'Receita' && e.status === 'Pendente').reduce((acc, curr) => acc + curr.value, 0)).replace('R$ ', '')}</p>
                     </div>
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Vencido</p>
-                        <p className="text-xl font-black text-rose-500">0</p>
+                        <p className="text-xl font-black text-rose-500">{formatCurrency(entries.filter(e => e.type === 'Receita' && e.status === 'Vencido').reduce((acc, curr) => acc + curr.value, 0)).replace('R$ ', '')}</p>
                     </div>
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Recebido no Mês</p>
-                        <p className="text-xl font-black text-emerald-500">35.560</p>
+                        <p className="text-xl font-black text-emerald-500">{formatCurrency(entries.filter(e => e.month === activeFilters.period && e.type === 'Receita' && (e.status === 'Recebido' || e.status === 'Conciliado')).reduce((acc, curr) => acc + curr.value, 0)).replace('R$ ', '')}</p>
                     </div>
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">% Inadimplência</p>
-                        <p className="text-xl font-black text-slate-900">0,0%</p>
+                        <p className="text-xl font-black text-slate-900">
+                            {(() => {
+                                const total = entries.filter(e => e.type === 'Receita').reduce((acc, curr) => acc + curr.value, 0);
+                                const vencido = entries.filter(e => e.type === 'Receita' && e.status === 'Vencido').reduce((acc, curr) => acc + curr.value, 0);
+                                return total > 0 ? ((vencido / total) * 100).toFixed(1).replace('.', ',') + '%' : '0,0%';
+                            })()}
+                        </p>
                     </div>
                 </div>
             </section>
@@ -332,19 +438,25 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
                 <div className="grid grid-cols-4 gap-0 border-r border-b border-slate-200">
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">A Pagar</p>
-                        <p className="text-xl font-black text-slate-900">285.639</p>
+                        <p className="text-xl font-black text-slate-900">{formatCurrency(entries.filter(e => e.type === 'Despesa' && e.status === 'Pendente').reduce((acc, curr) => acc + curr.value, 0)).replace('R$ ', '')}</p>
                     </div>
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Em Atraso</p>
-                        <p className="text-xl font-black text-rose-500">0</p>
+                        <p className="text-xl font-black text-rose-500">{formatCurrency(entries.filter(e => e.type === 'Despesa' && e.status === 'Vencido').reduce((acc, curr) => acc + curr.value, 0)).replace('R$ ', '')}</p>
                     </div>
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">Pago no Mês</p>
-                        <p className="text-xl font-black text-emerald-500">33.918</p>
+                        <p className="text-xl font-black text-emerald-500">{formatCurrency(entries.filter(e => e.month === activeFilters.period && e.type === 'Despesa' && (e.status === 'Pago' || e.status === 'Conciliado')).reduce((acc, curr) => acc + curr.value, 0)).replace('R$ ', '')}</p>
                     </div>
                     <div className="p-4 border-l border-t border-slate-200 text-center">
                         <p className="text-[8px] font-bold text-slate-400 uppercase mb-1">% Atraso</p>
-                        <p className="text-xl font-black text-slate-900">0,0%</p>
+                        <p className="text-xl font-black text-slate-900">
+                            {(() => {
+                                const total = entries.filter(e => e.type === 'Despesa').reduce((acc, curr) => acc + curr.value, 0);
+                                const atraso = entries.filter(e => e.type === 'Despesa' && e.status === 'Vencido').reduce((acc, curr) => acc + curr.value, 0);
+                                return total > 0 ? ((atraso / total) * 100).toFixed(1).replace('.', ',') + '%' : '0,0%';
+                            })()}
+                        </p>
                     </div>
                 </div>
             </section>
@@ -402,8 +514,8 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
                     <thead>
                         <tr className="bg-[#1a365d] text-white">
                             <th className="py-2 px-4 text-left text-[10px] uppercase font-black tracking-widest">Descrição</th>
-                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">ABR/2026</th>
-                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">MAR/2026</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">{activeFilters.period.split('-')[1] === '01' ? 'JAN' : activeFilters.period.split('-')[1] === '02' ? 'FEV' : activeFilters.period.split('-')[1] === '03' ? 'MAR' : activeFilters.period.split('-')[1] === '04' ? 'ABR' : activeFilters.period.split('-')[1] === '05' ? 'MAI' : activeFilters.period.split('-')[1] === '06' ? 'JUN' : activeFilters.period.split('-')[1] === '07' ? 'JUL' : activeFilters.period.split('-')[1] === '08' ? 'AGO' : activeFilters.period.split('-')[1] === '09' ? 'SET' : activeFilters.period.split('-')[1] === '10' ? 'OUT' : activeFilters.period.split('-')[1] === '11' ? 'NOV' : 'DEZ'}/{activeFilters.period.split('-')[0]}</th>
+                            <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">MÊS ANTERIOR</th>
                             <th className="py-2 px-4 text-center text-[10px] uppercase font-black tracking-widest">Var. %</th>
                         </tr>
                     </thead>

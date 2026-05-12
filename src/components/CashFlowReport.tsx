@@ -21,11 +21,13 @@ import {
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { getYearMonth } from '../lib/dateUtils';
 import { 
     collection, 
     query, 
     onSnapshot, 
-    orderBy 
+    orderBy,
+    where
 } from 'firebase/firestore';
 import { cn, formatCurrency } from '../lib/utils';
 import { Card } from './ui/Card';
@@ -54,33 +56,86 @@ interface CashFlowReportProps {
 
 export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) => {
     const reportRef = useRef<HTMLDivElement>(null);
-    const [entries, setEntries] = useState<FinancialEntry[]>([]);
+    const [agendaEntries, setAgendaEntries] = useState<FinancialEntry[]>([]);
+    const [transactionEntries, setTransactionEntries] = useState<FinancialEntry[]>([]);
+    const [dbAccounts, setDbAccounts] = useState<ChartAccount[]>([]);
     const [loading, setLoading] = useState(true);
     const [isPreviewing, setIsPreviewing] = useState(false);
-    const [currentMonth, setCurrentMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
-    const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+    const [currentMonth, setCurrentMonth] = useState(() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }); // YYYY-MM
+
+    useEffect(() => {
+        const unsubscribeAccounts = onSnapshot(query(
+            collection(db, 'chartOfAccounts'), 
+            where('clientId', '==', 'global'),
+            orderBy('code', 'asc')
+        ), (snap) => {
+            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChartAccount));
+            setDbAccounts(list);
+        });
+        return () => unsubscribeAccounts();
+    }, []);
+
+    const effectiveAccounts = dbAccounts.length > 0 ? dbAccounts : UNIVERSAL_CHART_OF_ACCOUNTS;
 
     useEffect(() => {
         if (!clientId) return;
 
         setLoading(true);
-        const path = `financialAgenda/${clientId}/entries`;
-        const q = query(collection(db, path), orderBy("date", "asc"));
+        
+        // Listener 1: Financial Agenda Entries
+        const agendaPath = `financialAgenda/${clientId}/entries`;
+        const qAgenda = query(collection(db, agendaPath), orderBy("date", "asc"));
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubAgenda = onSnapshot(qAgenda, (snapshot) => {
             const items = snapshot.docs.map(doc => ({
                 id: doc.id,
                 ...doc.data()
             } as FinancialEntry));
-            setEntries(items);
-            setLoading(false);
+            setAgendaEntries(items);
+            if (loading) setLoading(false);
         }, (error) => {
-            handleFirestoreError(error, OperationType.GET, path);
+            handleFirestoreError(error, OperationType.GET, agendaPath);
             setLoading(false);
         });
 
-        return () => unsubscribe();
+        // Listener 2: System Transactions
+        const qTransactions = query(
+            collection(db, 'transactions'),
+            where('clientId', '==', clientId)
+        );
+
+        const unsubTransactions = onSnapshot(qTransactions, (snapshot) => {
+            const items = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    date: data.settlement?.paymentDate || data.dueDate,
+                    description: data.description || data.partnerName || 'Transação',
+                    type: data.type === 'receita' ? 'receber' : 'pagar',
+                    category: data.category || '',
+                    accountId: data.accountId,
+                    value: data.settlement?.paidValue || data.originalValue,
+                    status: data.status,
+                    month: getYearMonth(data.settlement?.paymentDate || data.dueDate)
+                } as FinancialEntry;
+            });
+            setTransactionEntries(items);
+            if (loading) setLoading(false);
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, 'transactions');
+            setLoading(false);
+        });
+
+        return () => {
+            unsubAgenda();
+            unsubTransactions();
+        };
     }, [clientId]);
+
+    const entries = [...agendaEntries, ...transactionEntries];
 
     if (loading) {
         return (
@@ -106,36 +161,40 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
         const [year, month] = currentMonth.split('-');
         for (let i = 1; i <= n; i++) {
             const d = new Date(parseInt(year), parseInt(month) - 1 + i, 1);
-            months.push(d.toISOString().substring(0, 7));
+            months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
         }
         return months;
     };
     const nextThreeMonths = getNextNMonths(3);
 
-    // Grouping Logic for "DRE-style" Cash Flow
+    // Grouping Logic - Using N2 level from Chart of Accounts
     const categorizeEntry = (entry: FinancialEntry) => {
-        const account = UNIVERSAL_CHART_OF_ACCOUNTS.find(a => a.id === entry.accountId);
-        if (entry.type === 'receber') {
-            if (account?.id === 'rev_vendas') return 'Vendas';
-            if (account?.id === 'rev_servicos') return 'Consultoria';
-            if (entry.category === 'Projetos') return 'Projetos';
-            if (entry.category === 'Deduções' || account?.group === 'Custos Variáveis') return 'Deduções';
-            return 'Mensalidades BPO'; // Default for inflows in this BPO app
-        } else {
-            if (account?.group === 'Despesas Fixas - Pessoal') return 'Pessoal e Encargos';
-            if (account?.group === 'Despesas Fixas - Ocupação') return 'Ocupação e Instalações';
-            if (account?.group === 'Despesas Fixas - Administrativas') return 'Desp. Administrativas';
-            if (account?.group === 'Despesas Fixas - Comercial') return 'Vendas e Marketing';
-            if (account?.group === 'Investimentos') return 'Outras Saídas';
-            return 'Outras Saídas';
+        const account = effectiveAccounts.find(a => a.id === entry.accountId);
+        if (!account) return entry.category || 'Outros';
+
+        const codeParts = (account.code || '').split('.');
+        if (codeParts.length >= 2) {
+            const n2Code = `${codeParts[0]}.${codeParts[1]}`;
+            const n2Account = effectiveAccounts.find(a => a.code === n2Code);
+            if (n2Account) return n2Account.name;
         }
+        
+        return account.name;
     };
 
-    const categoriesIn = ['Mensalidades BPO', 'Consultoria', 'Projetos', 'Vendas', 'Deduções'];
-    const categoriesOut = ['Pessoal e Encargos', 'Ocupação e Instalações', 'Desp. Administrativas', 'Comunicação e TI', 'Impostos', 'Vendas e Marketing', 'Outras Saídas'];
+    const getStandardCategories = (type: 'receber' | 'pagar') => {
+        const n2Accounts = effectiveAccounts.filter(a => {
+            const parts = (a.code || '').split('.');
+            return parts.length === 2 && (a.type === type || a.type === 'mixed');
+        });
+        return n2Accounts.map(a => a.name);
+    };
 
-    const getMonthStats = (month: string) => {
-        const monthEntries = entries.filter(e => e.month === month);
+    const getMonthStats = (targetMonth: string) => {
+        const monthEntries = entries.filter(e => {
+            const entryMonth = getYearMonth(e.date || e.month);
+            return entryMonth === targetMonth;
+        });
         
         const stats: any = {
             in: {},
@@ -146,28 +205,35 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
             totalOutReal: 0
         };
 
-        categoriesIn.forEach(cat => stats.in[cat] = { prev: 0, real: 0 });
-        categoriesOut.forEach(cat => stats.out[cat] = { prev: 0, real: 0 });
+        // Pre-populate with standard categories to ensure correct order
+        getStandardCategories('receber').forEach(cat => stats.in[cat] = { prev: 0, real: 0 });
+        getStandardCategories('pagar').forEach(cat => stats.out[cat] = { prev: 0, real: 0 });
 
         monthEntries.forEach(e => {
             const cat = categorizeEntry(e);
-            const isSettled = e.status === 'Pago' || e.status === 'Recebido';
+            if (!cat) return;
+
+            const isSettled = e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado';
             
             if (e.type === 'receber') {
-                if (stats.in[cat]) {
-                    if (cat === 'Deduções') {
-                        stats.in[cat].prev -= e.value;
-                        if (isSettled) stats.in[cat].real -= e.value;
-                    } else {
-                        stats.in[cat].prev += e.value;
-                        if (isSettled) stats.in[cat].real += e.value;
-                    }
+                if (!stats.in[cat]) stats.in[cat] = { prev: 0, real: 0 };
+                
+                const isDeduction = cat.toLowerCase().includes('devoluções') || 
+                                   cat.toLowerCase().includes('abatimentos') || 
+                                   cat.toLowerCase().includes('imposto') || 
+                                   cat.toLowerCase().includes('simples');
+
+                if (isDeduction) {
+                    stats.in[cat].prev -= e.value;
+                    if (isSettled) stats.in[cat].real -= e.value;
+                } else {
+                    stats.in[cat].prev += e.value;
+                    if (isSettled) stats.in[cat].real += e.value;
                 }
             } else {
-                if (stats.out[cat]) {
-                    stats.out[cat].prev += e.value;
-                    if (isSettled) stats.out[cat].real += e.value;
-                }
+                if (!stats.out[cat]) stats.out[cat] = { prev: 0, real: 0 };
+                stats.out[cat].prev += e.value;
+                if (isSettled) stats.out[cat].real += e.value;
             }
         });
 
@@ -180,7 +246,45 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
     };
 
     const currentStats = getMonthStats(currentMonthStr);
+    
+    // Dynamic categories based on currentStats
+    const getTopLevelCategories = (stats: any, type: 'receber' | 'pagar') => {
+        const statsMap = type === 'receber' ? stats.in : stats.out;
+        const std = getStandardCategories(type);
+        const present = Object.keys(statsMap);
+        
+        return Array.from(new Set([...std, ...present])).sort((a, b) => {
+            const aIdx = std.indexOf(a);
+            const bIdx = std.indexOf(b);
+            if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+            if (aIdx !== -1) return -1;
+            if (bIdx !== -1) return 1;
+            return a.localeCompare(b);
+        });
+    };
+
+    const categoriesIn = getTopLevelCategories(currentStats, 'receber');
+    const categoriesOut = getTopLevelCategories(currentStats, 'pagar');
+
     const projectionStats = nextThreeMonths.map(m => getMonthStats(m));
+
+    // Dynamic Insights Logic
+    const prevMonthStr = (() => {
+        const [year, month] = currentMonthStr.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 2, 1);
+        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    })();
+    const prevStats = getMonthStats(prevMonthStr);
+
+    const revenueGrowth = prevStats.totalInReal > 0 
+        ? ((currentStats.totalInReal - prevStats.totalInReal) / prevStats.totalInReal) * 100 
+        : 0;
+    
+    const expenseChange = prevStats.totalOutReal > 0
+        ? ((currentStats.totalOutReal - prevStats.totalOutReal) / prevStats.totalOutReal) * 100
+        : 0;
+    
+    const marginProjectionTrend = projectionStats.reduce((acc, curr) => acc + (curr.totalInPrev - curr.totalOutPrev), 0);
 
     const generatePDF = (action: 'download' | 'preview') => {
         if (action === 'preview') {
@@ -264,30 +368,30 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
         doc.roundedRect(14, currentY, 58, 15, 2, 2, 'F');
         doc.setFontSize(5);
         doc.setTextColor(5, 150, 105); // emerald-600
-        doc.text('TENDÊNCIA DE RECEITA', 17, currentY + 5);
+        doc.text('VARIAÇÃO DE RECEITA', 17, currentY + 5);
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42);
-        doc.text('Crescimento de 12,4% esperado', 17, currentY + 11);
+        doc.text(`${revenueGrowth >= 0 ? 'Crescimento' : 'Queda'} de ${Math.abs(revenueGrowth).toFixed(1)}% vs anterior`, 17, currentY + 11);
 
         // Expense Alert
-        doc.setFillColor(254, 242, 242); // rose-50
+        doc.setFillColor(expenseChange > 10 ? 254 : 248, expenseChange > 10 ? 242 : 250, expenseChange > 10 ? 242 : 252);
         doc.roundedRect(76, currentY, 58, 15, 2, 2, 'F');
         doc.setFontSize(5);
-        doc.setTextColor(220, 38, 38); // rose-600
-        doc.text('ALERTA DE SAÍDA', 79, currentY + 5);
+        doc.setTextColor(expenseChange > 10 ? 220 : 100, expenseChange > 10 ? 38 : 116, expenseChange > 10 ? 38 : 139);
+        doc.text('VARIAÇÃO DE SAÍDAS', 79, currentY + 5);
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42);
-        doc.text('Aumento em Desp. Operacionais', 79, currentY + 11);
+        doc.text(`${expenseChange >= 0 ? 'Aumento' : 'Redução'} de ${Math.abs(expenseChange).toFixed(1)}% vs anterior`, 79, currentY + 11);
 
         // In/Out Distribution
         doc.setFillColor(239, 246, 255); // blue-50
         doc.roundedRect(138, currentY, 58, 15, 2, 2, 'F');
         doc.setFontSize(5);
         doc.setTextColor(37, 99, 235); // blue-600
-        doc.text('DISTRIBUIÇÃO IN/OUT', 141, currentY + 5);
+        doc.text('PROJEÇÃO LÍQUIDA (90D)', 141, currentY + 5);
         doc.setFontSize(7);
         doc.setTextColor(15, 23, 42);
-        doc.text('Foco em Redução de Custos Fixos', 141, currentY + 11);
+        doc.text(formatCurrency(marginProjectionTrend), 141, currentY + 11);
 
         currentY += 25;
 
@@ -361,10 +465,16 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
 
     // Cumulative Balance Logic
     const getCumulativeBalanceUntil = (monthStr: string) => {
-        const untilDate = new Date(monthStr + '-01');
+        const [uYear, uMonth] = monthStr.split('-').map(Number);
+        const untilDate = new Date(uYear, uMonth - 1, 1);
         const previousEntries = entries.filter(e => {
-            const entryDate = new Date(e.month + '-01');
-            return entryDate < untilDate && (e.status === 'Pago' || e.status === 'Recebido');
+            const entryMonth = getYearMonth(e.date || e.month);
+
+            if (!entryMonth || !entryMonth.includes('-')) return false;
+
+            const [eYear, eMonth] = entryMonth.split('-').map(Number);
+            const entryDate = new Date(eYear, eMonth - 1, 1);
+            return entryDate < untilDate && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado');
         });
         const prevIn = previousEntries.filter(e => e.type === 'receber').reduce((acc, curr) => acc + curr.value, 0);
         const prevOut = previousEntries.filter(e => e.type === 'pagar').reduce((acc, curr) => acc + curr.value, 0);
@@ -456,7 +566,6 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
                                 const newYear = e.target.value;
                                 const month = currentMonth.split('-')[1];
                                 setCurrentMonth(`${newYear}-${month}`);
-                                setSelectedYear(newYear);
                             }}
                             className="bg-transparent text-[10px] font-black text-slate-600 uppercase tracking-widest outline-none cursor-pointer"
                         >
@@ -600,30 +709,30 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
             {/* Footer Insights */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <Card className="p-6 bg-slate-50 border-slate-100 rounded-3xl flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-500 flex items-center justify-center">
-                        <TrendingUp size={20} />
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", revenueGrowth >= 0 ? "bg-emerald-50 text-emerald-500" : "bg-rose-50 text-rose-500")}>
+                        {revenueGrowth >= 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                     </div>
                     <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tendência de Receita</p>
-                        <p className="text-sm font-bold text-slate-900">Crescimento de 12,4% esperado</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Variação de Receita</p>
+                        <p className="text-sm font-bold text-slate-900">{revenueGrowth >= 0 ? 'Crescimento' : 'Queda'} de {Math.abs(revenueGrowth).toFixed(1)}%</p>
                     </div>
                 </Card>
                 <Card className="p-6 bg-slate-50 border-slate-100 rounded-3xl flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center">
-                        <TrendingDown size={20} />
+                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", expenseChange > 5 ? "bg-rose-50 text-rose-500" : "bg-emerald-50 text-emerald-500")}>
+                        {expenseChange > 0 ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                     </div>
                     <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Alerta de Saída</p>
-                        <p className="text-sm font-bold text-slate-900">Aumento em Desp. Operacionais</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Variação de Saídas</p>
+                        <p className="text-sm font-bold text-slate-900">{expenseChange >= 0 ? 'Aumento' : 'Redução'} de {Math.abs(expenseChange).toFixed(1)}%</p>
                     </div>
                 </Card>
                 <Card className="p-6 bg-slate-50 border-slate-100 rounded-3xl flex items-center gap-4">
                     <div className="w-10 h-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center">
-                        <PieChart size={20} />
+                        <BarChart3 size={20} />
                     </div>
                     <div>
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Distribuição In/Out</p>
-                        <p className="text-sm font-bold text-slate-900">Foco em Redução de Custos Fixos</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Resultado Proj. (90d)</p>
+                        <p className="text-sm font-bold text-slate-900">{formatCurrency(marginProjectionTrend)}</p>
                     </div>
                 </Card>
             </div>
@@ -856,6 +965,7 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
                             <CashFlowDocument 
                                 clientName={clientName}
                                 month={getMonthName(currentMonthStr)}
+                                currentMonth={currentMonthStr}
                                 stats={currentStats}
                                 projection={projectionStats}
                                 saldoInicial={saldoInicial}
@@ -863,6 +973,9 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
                                 categoriesIn={categoriesIn}
                                 categoriesOut={categoriesOut}
                                 formatVarPercent={formatVarPercent}
+                                revenueGrowth={revenueGrowth}
+                                expenseChange={expenseChange}
+                                marginProjectionTrend={marginProjectionTrend}
                             />
                         </div>
                     </div>
@@ -876,14 +989,19 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
 const CashFlowDocument = ({ 
     clientName, 
     month, 
+    currentMonth,
     stats, 
     projection, 
     saldoInicial, 
     saldoFinal,
     categoriesIn,
     categoriesOut,
-    formatVarPercent
+    formatVarPercent,
+    revenueGrowth,
+    expenseChange,
+    marginProjectionTrend
 }: any) => {
+    const [year, mPart] = currentMonth.split('-').map(Number);
     return (
         <div className="bg-white min-h-full p-8 shadow-inner font-sans text-slate-900 mx-auto max-w-[750px] print:p-0 print:shadow-none">
             {/* Header */}
@@ -926,21 +1044,21 @@ const CashFlowDocument = ({
                 </div>
             </div>
 
-            {/* Insight Indicators (Trend, Alert, Distribution) */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-100 flex flex-col justify-center">
-                    <p className="text-[6px] font-black text-emerald-600 uppercase mb-0.5 tracking-wider">Tendência Receita</p>
-                    <p className="text-[9px] font-bold text-slate-700 leading-tight">Crescimento de 12,4% esperado</p>
+                {/* Insight Indicators (Trend, Alert, Distribution) */}
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className={cn("p-2.5 rounded-xl border flex flex-col justify-center", revenueGrowth >= 0 ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100")}>
+                        <p className={cn("text-[6px] font-black uppercase mb-0.5 tracking-wider", revenueGrowth >= 0 ? "text-emerald-600" : "text-rose-600")}>Var. Receita</p>
+                        <p className="text-[9px] font-bold text-slate-700 leading-tight">{revenueGrowth >= 0 ? 'Crescimento' : 'Queda'} de {Math.abs(revenueGrowth).toFixed(1)}%</p>
+                    </div>
+                    <div className={cn("p-2.5 rounded-xl border flex flex-col justify-center", expenseChange <= 5 ? "bg-emerald-50 border-emerald-100" : "bg-rose-50 border-rose-100")}>
+                        <p className={cn("text-[6px] font-black uppercase mb-0.5 tracking-wider", expenseChange <= 5 ? "text-emerald-600" : "text-rose-600")}>Var. Saídas</p>
+                        <p className="text-[9px] font-bold text-slate-700 leading-tight">{expenseChange >= 0 ? 'Aumento' : 'Redução'} de {Math.abs(expenseChange).toFixed(1)}%</p>
+                    </div>
+                    <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-100 flex flex-col justify-center">
+                        <p className="text-[6px] font-black text-blue-600 uppercase mb-0.5 tracking-wider">Proj. Líquida (90d)</p>
+                        <p className="text-[9px] font-bold text-slate-700 leading-tight">{formatCurrency(marginProjectionTrend)}</p>
+                    </div>
                 </div>
-                <div className="bg-rose-50 p-2.5 rounded-xl border border-rose-100 flex flex-col justify-center">
-                    <p className="text-[6px] font-black text-rose-600 uppercase mb-0.5 tracking-wider">Alerta de Saída</p>
-                    <p className="text-[9px] font-bold text-slate-700 leading-tight">Aumento em Desp. Operacionais</p>
-                </div>
-                <div className="bg-blue-50 p-2.5 rounded-xl border border-blue-100 flex flex-col justify-center">
-                    <p className="text-[6px] font-black text-blue-600 uppercase mb-0.5 tracking-wider">Distribuição</p>
-                    <p className="text-[9px] font-bold text-slate-700 leading-tight">Foco em Redução Custos Fixos</p>
-                </div>
-            </div>
 
             {/* Main Table */}
             <table className="w-full text-left border-collapse mb-10">
@@ -992,7 +1110,8 @@ const CashFlowDocument = ({
                 <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Projeção Próximos 90 Dias</h3>
                 <div className="grid grid-cols-3 gap-3">
                     {projection.map((proj: any, idx: number) => {
-                        const monthName = new Date(new Date().getFullYear(), new Date().getMonth() + idx + 1, 1).toLocaleDateString('pt-BR', { month: 'short' });
+                        const monthDate = new Date(year, mPart - 1 + idx + 1, 1);
+                        const monthName = monthDate.toLocaleDateString('pt-BR', { month: 'short' }).toUpperCase();
                         return (
                             <div key={idx} className="bg-slate-50 p-3 rounded-lg border border-slate-100">
                                 <p className="text-[7px] font-bold text-slate-400 uppercase mb-1">{monthName}</p>

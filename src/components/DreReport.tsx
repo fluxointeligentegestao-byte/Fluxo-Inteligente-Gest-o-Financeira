@@ -19,16 +19,98 @@ import autoTable from 'jspdf-autotable';
 import { Card } from './ui/Card';
 import { Button } from './ui/Button';
 import { cn } from '../lib/utils';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { getYearMonth } from '../lib/dateUtils';
+import { 
+    collection, 
+    query, 
+    onSnapshot, 
+    orderBy,
+    where 
+} from 'firebase/firestore';
+import { UNIVERSAL_CHART_OF_ACCOUNTS, ChartAccount } from '../constants/financial';
 
 interface DreReportProps {
+    clientId: string;
     clientName: string;
     selectedYear: string;
 }
 
-const DreReport = ({ clientName, selectedYear: initialYear }: DreReportProps) => {
+const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreReportProps) => {
     const [selectedYear, setSelectedYear] = useState(initialYear || new Date().getFullYear().toString());
     const [currentMonth, setCurrentMonth] = useState(`${selectedYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
     const [isPreviewing, setIsPreviewing] = useState(false);
+    const [agendaEntries, setAgendaEntries] = useState<any[]>([]);
+    const [transactionEntries, setTransactionEntries] = useState<any[]>([]);
+    const [dbAccounts, setDbAccounts] = useState<ChartAccount[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const unsubscribeAccounts = onSnapshot(query(
+            collection(db, 'chartOfAccounts'), 
+            where('clientId', '==', 'global'),
+            orderBy('code', 'asc')
+        ), (snap) => {
+            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChartAccount));
+            setDbAccounts(list);
+        });
+        return () => unsubscribeAccounts();
+    }, []);
+
+    const effectiveAccounts = dbAccounts.length > 0 ? dbAccounts : UNIVERSAL_CHART_OF_ACCOUNTS;
+
+    useEffect(() => {
+        if (!clientId) return;
+        setLoading(true);
+        
+        // Listener 1: Agenda Entries
+        const agendaPath = `financialAgenda/${clientId}/entries`;
+        const qAgenda = query(collection(db, agendaPath), orderBy('date', 'desc'));
+
+        const unsubAgenda = onSnapshot(qAgenda, (snap) => {
+            const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAgendaEntries(list);
+            if (loading) setLoading(false);
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, agendaPath);
+            setLoading(false);
+        });
+
+        // Listener 2: System Transactions
+        const qTransactions = query(
+            collection(db, 'transactions'),
+            where('clientId', '==', clientId)
+        );
+
+        const unsubTransactions = onSnapshot(qTransactions, (snapshot) => {
+            const items = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    date: data.settlement?.paymentDate || data.dueDate,
+                    description: data.description || data.partnerName || 'Transação',
+                    type: data.type === 'receita' ? 'receber' : 'pagar',
+                    category: data.category || '',
+                    accountId: data.accountId,
+                    value: data.settlement?.paidValue || data.originalValue,
+                    status: data.status,
+                    month: getYearMonth(data.settlement?.paymentDate || data.dueDate)
+                };
+            });
+            setTransactionEntries(items);
+            if (loading) setLoading(false);
+        }, (error) => {
+            handleFirestoreError(error, OperationType.GET, 'transactions');
+            setLoading(false);
+        });
+
+        return () => {
+            unsubAgenda();
+            unsubTransactions();
+        };
+    }, [clientId]);
+
+    const entries = [...agendaEntries, ...transactionEntries];
 
     const formatCurrency = (val: number) => {
         return new Intl.NumberFormat('pt-BR', {
@@ -50,48 +132,132 @@ const DreReport = ({ clientName, selectedYear: initialYear }: DreReportProps) =>
         'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
     ];
 
-    // Mock data with dynamic month/year
+    // Real calculation logic using entries from Firestore
     const getDreData = (monthYear: string) => {
         const [year, month] = monthYear.split('-');
-        const monthIdx = parseInt(month) - 1;
-        const currentMonthName = monthNames[monthIdx];
+        const monthYearStr = `${year}-${month}`;
         
-        const prevMonthIdx = monthIdx === 0 ? 11 : monthIdx - 1;
-        const prevYear = monthIdx === 0 ? parseInt(year) - 1 : parseInt(year);
+        // Previous month logic
+        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+        date.setMonth(date.getMonth() - 1);
+        const prevMonthYearStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        
+        const filterByMonth = (targetMonth: string) => {
+            return entries.filter(e => {
+                const entryMonth = getYearMonth(e.date || e.month);
+                return entryMonth === targetMonth && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado');
+            });
+        };
+
+        const currentMonthEntries = filterByMonth(monthYearStr);
+        const prevMonthEntries = filterByMonth(prevMonthYearStr);
+        const [pYear, pMonth] = prevMonthYearStr.split('-');
+
+        const sumByAccounts = (list: any[], codes: string[]) => {
+            return list.filter(e => {
+                const acc = effectiveAccounts.find(a => a.id === e.accountId);
+                if (!acc) return false;
+                return codes.some(code => acc.code.startsWith(code));
+            }).reduce((acc, curr) => acc + curr.value, 0);
+        };
+
+        const sumByGroup = (list: any[], group: string) => {
+            return list.filter(e => {
+                const acc = effectiveAccounts.find(a => a.id === e.accountId);
+                return acc?.group === group;
+            }).reduce((acc, curr) => acc + curr.value, 0);
+        };
+
+        // Calculations Current
+        const receitaBrutaServ = sumByAccounts(currentMonthEntries, ['1.1']);
+        const receitaBrutaVend = sumByAccounts(currentMonthEntries, ['1.2']);
+        const receitaBrutaTotal = receitaBrutaServ + receitaBrutaVend;
+        
+        const deducoes = sumByAccounts(currentMonthEntries, ['1.3']);
+        const impostosRec = sumByAccounts(currentMonthEntries, ['1.4']);
+        const receitaLiquida = receitaBrutaTotal - deducoes - impostosRec;
+
+        const custosDir = sumByAccounts(currentMonthEntries, ['2']);
+        const lucroBruto = receitaLiquida - custosDir;
+
+        const despPessoal = sumByAccounts(currentMonthEntries, ['3.1']);
+        const despOcupacao = sumByAccounts(currentMonthEntries, ['3.2']);
+        const despTecnologia = sumByAccounts(currentMonthEntries, ['3.3']);
+        const despAdmin = sumByAccounts(currentMonthEntries, ['3.4']);
+        const despVendas = sumByAccounts(currentMonthEntries, ['3.5']);
+        const despOutras = sumByAccounts(currentMonthEntries, ['3.6']);
+        const totalDespesas = despPessoal + despOcupacao + despTecnologia + despAdmin + despVendas + despOutras;
+
+        const ebitda = lucroBruto - totalDespesas;
+
+        const recFin = sumByAccounts(currentMonthEntries, ['4.2']);
+        const despFin = sumByAccounts(currentMonthEntries, ['4.1']);
+        const ebit = ebitda + recFin - despFin;
+
+        const tributos = sumByAccounts(currentMonthEntries, ['5']);
+        const lucroLiquido = ebit - tributos;
+
+        // Calculations Previous
+        const pReceitaBrutaServ = sumByAccounts(prevMonthEntries, ['1.1']);
+        const pReceitaBrutaVend = sumByAccounts(prevMonthEntries, ['1.2']);
+        const pReceitaBrutaTotal = pReceitaBrutaServ + pReceitaBrutaVend;
+        const pDeducoes = sumByAccounts(prevMonthEntries, ['1.3']);
+        const pImpostosRec = sumByAccounts(prevMonthEntries, ['1.4']);
+        const pReceitaLiquida = pReceitaBrutaTotal - pDeducoes - pImpostosRec;
+        const pCustosDir = sumByAccounts(prevMonthEntries, ['2']);
+        const pLucroBruto = pReceitaLiquida - pCustosDir;
+        const pDespTotal = sumByAccounts(prevMonthEntries, ['3']);
+        const pEbitda = pLucroBruto - pDespTotal;
+        const pRecFin = sumByAccounts(prevMonthEntries, ['4.2']);
+        const pDespFin = sumByAccounts(prevMonthEntries, ['4.1']);
+        const pEbit = pEbitda + pRecFin - pDespFin;
+        const pTributos = sumByAccounts(prevMonthEntries, ['5']);
+        const pLucroLiquido = pEbit - pTributos;
+
+        const calcVar = (curr: number, prev: number) => {
+            if (prev === 0) return curr === 0 ? 0 : 100;
+            return ((curr - prev) / Math.abs(prev)) * 100;
+        };
+
+        const currentMonthName = monthNames[parseInt(month) - 1];
+        const prevMonthIdx = parseInt(pMonth) - 1;
         const prevMonthNameShort = monthNames[prevMonthIdx].substring(0, 3).toUpperCase();
 
         return {
             month: `${currentMonthName.toUpperCase()} / ${year}`,
-            prevMonth: `${prevMonthNameShort}/${prevYear}`,
+            prevMonth: `${prevMonthNameShort}/${pYear}`,
             indicators: [
-                { label: 'RECEITA BRUTA', value: 39100.00, variation: 11, desc: 'Faturamento antes de impostos', icon: DollarSign, color: 'border-blue-500' },
-                { label: 'RECEITA LÍQUIDA', value: 37477.00, variation: 11, desc: 'Receita menos deduções', icon: Target, color: 'border-emerald-500' },
-                { label: 'LUCRO BRUTO', value: 37477.00, variation: 11, desc: 'Após custos diretos', icon: PieChart, color: 'border-purple-500' },
-                { label: 'EBITDA', value: 6340.00, variation: -67, desc: 'Resultado operacional', icon: TrendingUp, color: 'border-orange-500' },
-                { label: 'LUCRO LÍQUIDO', value: 4716.00, variation: -74, desc: 'Resultado final do mês', icon: DollarSign, color: 'border-cyan-500' },
-                { label: 'MARGEM LÍQUIDA', value: 12.1, variation: -38.8, desc: 'Rentabilidade sobre receita', icon: Percent, color: 'border-indigo-500', isPercent: true, varLabel: 'p.p.' },
+                { label: 'RECEITA BRUTA', value: receitaBrutaTotal, variation: calcVar(receitaBrutaTotal, pReceitaBrutaTotal), desc: 'Faturamento antes de impostos', icon: DollarSign, color: 'border-blue-500' },
+                { label: 'RECEITA LÍQUIDA', value: receitaLiquida, variation: calcVar(receitaLiquida, pReceitaLiquida), desc: 'Receita menos deduções', icon: Target, color: 'border-emerald-500' },
+                { label: 'LUCRO BRUTO', value: lucroBruto, variation: calcVar(lucroBruto, pLucroBruto), desc: 'Após custos diretos', icon: PieChart, color: 'border-purple-500' },
+                { label: 'EBITDA', value: ebitda, variation: calcVar(ebitda, pEbitda), desc: 'Resultado operacional', icon: TrendingUp, color: 'border-orange-500' },
+                { label: 'LUCRO LÍQUIDO', value: lucroLiquido, variation: calcVar(lucroLiquido, pLucroLiquido), desc: 'Resultado final do mês', icon: DollarSign, color: 'border-cyan-500' },
+                { label: 'MARGEM LÍQUIDA', value: receitaLiquida > 0 ? (lucroLiquido / receitaLiquida) * 100 : 0, variation: calcVar(receitaLiquida > 0 ? (lucroLiquido / receitaLiquida) * 100 : 0, pReceitaLiquida > 0 ? (pLucroLiquido / pReceitaLiquida) * 100 : 0), desc: 'Rentabilidade sobre receita', icon: Percent, color: 'border-indigo-500', isPercent: true, varLabel: 'p.p.' },
             ],
             rows: [
-                { label: 'Receita Bruta de Serviços', current: 39100, av: 100.0, prev: 35100, var: 11.4, type: 'item' },
-                { label: 'RECEITA BRUTA TOTAL', current: 39100, av: 100, prev: 35100, var: 11.4, type: 'total' },
-                { label: '(-) Deduções e Abatimentos', current: 0, av: 0, prev: 0, var: 0, type: 'item' },
-                { label: '(-) Impostos sobre Receita', current: -1623, av: -4.2, prev: -1456, var: 11.5, type: 'item' },
-                { label: '= RECEITA LÍQUIDA', current: 37477, av: 95.8, prev: 33644, var: 11.4, type: 'highlight' },
-                { label: '(-) Custos Operacionais', current: 0, av: 0, prev: 0, var: 0, type: 'item' },
-                { label: '= LUCRO BRUTO', current: 37477, av: 95.8, prev: 33644, var: 11.4, type: 'highlight' },
+                { label: 'Receita Bruta de Serviços', current: receitaBrutaServ, av: receitaBrutaTotal > 0 ? (receitaBrutaServ / receitaBrutaTotal) * 100 : 0, prev: pReceitaBrutaServ, var: calcVar(receitaBrutaServ, pReceitaBrutaServ), type: 'item' },
+                { label: 'Receita Bruta de Vendas', current: receitaBrutaVend, av: receitaBrutaTotal > 0 ? (receitaBrutaVend / receitaBrutaTotal) * 100 : 0, prev: pReceitaBrutaVend, var: calcVar(receitaBrutaVend, pReceitaBrutaVend), type: 'item' },
+                { label: 'RECEITA BRUTA TOTAL', current: receitaBrutaTotal, av: 100, prev: pReceitaBrutaTotal, var: calcVar(receitaBrutaTotal, pReceitaBrutaTotal), type: 'total' },
+                { label: '(-) Devoluções e Abatimentos', current: -deducoes, av: receitaBrutaTotal > 0 ? (-deducoes / receitaBrutaTotal) * 100 : 0, prev: -pDeducoes, var: calcVar(deducoes, pDeducoes), type: 'item' },
+                { label: '(-) Simples Nacional s/ Receita', current: -impostosRec, av: receitaBrutaTotal > 0 ? (-impostosRec / receitaBrutaTotal) * 100 : 0, prev: -pImpostosRec, var: calcVar(impostosRec, pImpostosRec), type: 'item' },
+                { label: '= RECEITA LÍQUIDA', current: receitaLiquida, av: receitaBrutaTotal > 0 ? (receitaLiquida / receitaBrutaTotal) * 100 : 0, prev: pReceitaLiquida, var: calcVar(receitaLiquida, pReceitaLiquida), type: 'highlight' },
+                { label: '(-) Custos Operacionais', current: -custosDir, av: receitaBrutaTotal > 0 ? (-custosDir / receitaBrutaTotal) * 100 : 0, prev: -pCustosDir, var: calcVar(custosDir, pCustosDir), type: 'item' },
+                { label: '= LUCRO BRUTO', current: lucroBruto, av: receitaBrutaTotal > 0 ? (lucroBruto / receitaBrutaTotal) * 100 : 0, prev: pLucroBruto, var: calcVar(lucroBruto, pLucroBruto), type: 'highlight' },
                 { label: 'DESPESAS OPERACIONAIS', type: 'section' },
-                { label: '(-) Pessoal e Encargos', current: -21544, av: -55.1, prev: -5285, var: 307.6, type: 'item' },
-                { label: '(-) Ocupação e Instalações', current: -4716, av: -12.1, prev: -4498, var: 4.9, type: 'item' },
-                { label: '(-) Comunicação e Tecnologia', current: -1648, av: -4.2, prev: -1620, var: 1.8, type: 'item' },
-                { label: '(-) Despesas Administrativas', current: -3228, av: -8.3, prev: -2924, var: 10.4, type: 'item' },
-                { label: 'TOTAL DESPESAS OPERAC.', current: -31137, av: -79.6, prev: -14327, var: 117.3, type: 'total_red' },
-                { label: '= EBITDA', current: 6340, av: 16.2, prev: 19316, var: -67.2, type: 'highlight_green' },
+                { label: '(-) Pessoal e Encargos', current: -despPessoal, av: receitaBrutaTotal > 0 ? (-despPessoal / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.1']), var: calcVar(despPessoal, sumByAccounts(prevMonthEntries, ['3.1'])), type: 'item' },
+                { label: '(-) Ocupação e Instalações', current: -despOcupacao, av: receitaBrutaTotal > 0 ? (-despOcupacao / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.2']), var: calcVar(despOcupacao, sumByAccounts(prevMonthEntries, ['3.2'])), type: 'item' },
+                { label: '(-) Comunicação e Tecnologia', current: -despTecnologia, av: receitaBrutaTotal > 0 ? (-despTecnologia / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.3']), var: calcVar(despTecnologia, sumByAccounts(prevMonthEntries, ['3.3'])), type: 'item' },
+                { label: '(-) Despesas Administrativas', current: -despAdmin, av: receitaBrutaTotal > 0 ? (-despAdmin / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.4']), var: calcVar(despAdmin, sumByAccounts(prevMonthEntries, ['3.4'])), type: 'item' },
+                { label: '(-) Vendas e Marketing', current: -despVendas, av: receitaBrutaTotal > 0 ? (-despVendas / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.5']), var: calcVar(despVendas, sumByAccounts(prevMonthEntries, ['3.5'])), type: 'item' },
+                { label: '(-) Outras Despesas Operacionais', current: -despOutras, av: receitaBrutaTotal > 0 ? (-despOutras / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.6']), var: calcVar(despOutras, sumByAccounts(prevMonthEntries, ['3.6'])), type: 'item' },
+                { label: 'TOTAL DESPESAS OPERAC.', current: -totalDespesas, av: receitaBrutaTotal > 0 ? (-totalDespesas / receitaBrutaTotal) * 100 : 0, prev: -pDespTotal, var: calcVar(totalDespesas, pDespTotal), type: 'total_red' },
+                { label: '= EBITDA', current: ebitda, av: receitaBrutaTotal > 0 ? (ebitda / receitaBrutaTotal) * 100 : 100, prev: pEbitda, var: calcVar(ebitda, pEbitda), type: 'highlight_green' },
                 { label: 'RESULTADO FINANC.', type: 'section' },
-                { label: '(+) Receitas Financeiras', current: 0, av: 0, prev: 0, var: 0, type: 'item' },
-                { label: '(-) Despesas Financeiras', current: 0, av: 0, prev: 0, var: 0, type: 'item' },
-                { label: '= EBIT (Resultado antes impostos)', current: 6340, av: 16.2, prev: 19316, var: -67.2, type: 'highlight_green' },
-                { label: '(-) Impostos', current: -1623, av: -4.2, prev: -1456, var: 11.5, type: 'item' },
-                { label: '= LUCRO LÍQUIDO', current: 4716, av: 12.1, prev: 17860, var: -73.6, type: 'footer' },
+                { label: '(+) Receitas Financeiras', current: recFin, av: receitaBrutaTotal > 0 ? (recFin / receitaBrutaTotal) * 100 : 0, prev: pRecFin, var: calcVar(recFin, pRecFin), type: 'item' },
+                { label: '(-) Despesas Financeiras', current: -despFin, av: receitaBrutaTotal > 0 ? (-despFin / receitaBrutaTotal) * 100 : 0, prev: -pDespFin, var: calcVar(despFin, pDespFin), type: 'item' },
+                { label: '= EBIT (Resultado antes impostos)', current: ebit, av: receitaBrutaTotal > 0 ? (ebit / receitaBrutaTotal) * 100 : 100, prev: pEbit, var: calcVar(ebit, pEbit), type: 'highlight_green' },
+                { label: '(-) Impostos', current: -tributos, av: receitaBrutaTotal > 0 ? (-tributos / receitaBrutaTotal) * 100 : 0, prev: -pTributos, var: calcVar(tributos, pTributos), type: 'item' },
+                { label: '= LUCRO LÍQUIDO', current: lucroLiquido, av: receitaBrutaTotal > 0 ? (lucroLiquido / receitaBrutaTotal) * 100 : 100, prev: pLucroLiquido, var: calcVar(lucroLiquido, pLucroLiquido), type: 'footer' },
             ]
         };
     };

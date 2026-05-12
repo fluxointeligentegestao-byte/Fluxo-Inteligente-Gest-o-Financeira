@@ -108,15 +108,16 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
     const [category, setCategory] = useState(REPORT_CATEGORIES[0]);
     const [url, setUrl] = useState('');
     const [period, setPeriod] = useState('');
-    const [targetClientId, setTargetClientId] = useState(selectedClientId || '');
+    const [targetClientId, setTargetClientId] = useState(selectedClientId || user?.uid || '');
     const [uploading, setUploading] = useState(false);
-    const [reportClientId, setReportClientId] = useState(selectedClientId || '');
+    const [reportClientId, setReportClientId] = useState(selectedClientId || user?.uid || '');
 
     useEffect(() => {
-        if (selectedClientId && reportClientId !== selectedClientId) {
-            setReportClientId(selectedClientId);
+        const activeId = selectedClientId || user?.uid;
+        if (activeId && reportClientId !== activeId) {
+            setReportClientId(activeId);
         }
-    }, [selectedClientId]);
+    }, [selectedClientId, user?.uid]);
 
     useEffect(() => {
         if (!user || !selectedClientId) {
@@ -397,6 +398,7 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
                             
                             {reportClientId ? (
                                 <DreReport 
+                                    clientId={reportClientId}
                                     clientName={isAdmin ? (clients.find(c => c.id === reportClientId)?.name || 'Cliente') : (profile?.name || 'Cliente')} 
                                     selectedYear={new Date().getFullYear().toString()}
                                 />
