@@ -108,7 +108,6 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
         { id: 'documents', label: 'Documentos', icon: Upload, hasAccess: true },
         { id: 'plans', label: 'Planos & Serviços', icon: CreditCard, hasAccess: true },
         { id: 'support', label: 'Suporte', icon: MessageSquare, hasAccess: true },
-        { id: 'logout', label: 'Sair / Trocar Conta', icon: LogOut, hasAccess: true },
       ]
     : [
         { id: 'profile', label: 'Meu Perfil', icon: User },
@@ -117,7 +116,6 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
         { id: 'documents', label: 'Meus Documentos', icon: Upload },
         { id: 'plans', label: 'Planos', icon: CreditCard },
         { id: 'support', label: 'Suporte & Ajuda', icon: MessageSquare },
-        { id: 'logout', label: 'Sair / Trocar Conta', icon: LogOut },
       ].map(item => {
         const clientPlan = isPreviewMode 
             ? clients.find(c => c.id === selectedClientId)?.planId 
@@ -262,12 +260,6 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
                         </div>
                     </div>
                 </div>
-                <button 
-                  onClick={signOut}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-all font-bold text-xs uppercase tracking-widest"
-                >
-                    <LogOut size={14} /> Sair / Trocar Conta
-                </button>
            </div>
         </div>
       </aside>
