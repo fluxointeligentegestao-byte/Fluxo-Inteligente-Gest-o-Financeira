@@ -34,7 +34,7 @@ import {
 import { cn, formatCurrency } from '../lib/utils';
 import { motion } from 'motion/react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, query, where, getDocs, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, onSnapshot, orderBy, doc, setDoc } from 'firebase/firestore';
 import { canAccessReport, UserPlan } from '../lib/planUtils';
 import { AlertCircle, Lock } from 'lucide-react';
 
@@ -66,6 +66,15 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
 
   const firstName = isPreviewMode ? (selectedClientName?.split(' ')[0] || 'Cliente') : (profile?.name?.split(' ')[0] || 'Cliente');
   
+  const [activeFilters, setActiveFilters] = useState({
+    startDate: (() => {
+        const d = new Date();
+        d.setMonth(d.getMonth() - 5);
+        d.setDate(1);
+        return d.toISOString().split('T')[0];
+    })(),
+    endDate: new Date().toISOString().split('T')[0]
+  });
   const [stats, setStats] = useState({
     totalClients: 0,
     pendingDocs: 14,
@@ -74,6 +83,8 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
     clientToReceive: 0,
     clientBalance: 0
   });
+
+  const [chartData, setChartData] = useState<any[]>([]);
 
   const [clients, setClients] = useState<any[]>([]);
   const [banks, setBanks] = useState<any[]>([]);
@@ -96,8 +107,6 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
       const activeId = isPreviewMode ? selectedClientId : user?.uid;
       if (!activeId) return;
 
-      const currentMonth = new Date().toISOString().substring(0, 7);
-
       // Real-time banks for this client
       const banksRef = query(collection(db, 'banks'), where('clientId', '==', activeId));
       const unsubBanks = onSnapshot(banksRef, (snapshot) => {
@@ -107,14 +116,14 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
         handleFirestoreError(error, OperationType.GET, 'banks');
       });
 
-      // Get transactions for this month to show movement per bank
+      // Get transactions for the selected range to show movement per bank
       const transRef = collection(db, 'transactions');
       const qTrans = query(
         transRef,
         where('clientId', '==', activeId),
         where('status', 'in', ['Pago', 'Recebido', 'Conciliado']),
-        where('settlement.paymentDate', '>=', `${currentMonth}-01`),
-        where('settlement.paymentDate', '<=', `${currentMonth}-31`)
+        where('settlement.paymentDate', '>=', activeFilters.startDate),
+        where('settlement.paymentDate', '<=', activeFilters.endDate)
       );
 
       const unsubTrans = onSnapshot(qTrans, (snapshot) => {
@@ -135,7 +144,11 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
       });
 
       const path = `financialAgenda/${activeId}/entries`;
-      const q = query(collection(db, path), where('month', '==', currentMonth));
+      const q = query(
+          collection(db, path), 
+          where('date', '>=', activeFilters.startDate),
+          where('date', '<=', activeFilters.endDate)
+      );
       
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const items = snapshot.docs.map(doc => doc.data());
@@ -147,6 +160,27 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
           clientToReceive: toReceive,
           clientBalance: toReceive - toPay
         }));
+
+        // Process Chart Data
+        const monthlyData: Record<string, { receita: number, despesa: number }> = {};
+        items.forEach(item => {
+            const date = new Date(item.date + 'T12:00:00');
+            const label = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+            if (!monthlyData[label]) monthlyData[label] = { receita: 0, despesa: 0 };
+            
+            if (item.type === 'receber') monthlyData[label].receita += item.value;
+            else monthlyData[label].despesa += item.value;
+        });
+
+        const formattedChart = Object.entries(monthlyData).map(([name, values]) => ({
+            name,
+            ...values
+        }));
+        
+        setChartData(formattedChart.length > 0 ? formattedChart : [
+            { name: 'Sem Dados', receita: 0, despesa: 0 }
+        ]);
+
       }, (error) => {
         console.error("Error listening to financialAgenda:", error);
         handleFirestoreError(error, OperationType.GET, path);
@@ -157,19 +191,21 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
         unsubTrans();
       };
     }
-  }, [profile, user, showAdminView, isPreviewMode, selectedClientId]);
+  }, [profile, user, showAdminView, isPreviewMode, selectedClientId, activeFilters.startDate, activeFilters.endDate]);
 
   useEffect(() => {
     if (!showAdminView) return;
 
     console.log("Dashboard: Subscribing to userProfiles (showAdminView=true)... Admin Email:", user?.email);
     const unsubClients = onSnapshot(collection(db, 'userProfiles'), async (snapshot) => {
-        console.log(`Dashboard: Fetched ${snapshot.docs.length} total profiles`);
+        console.log(`Dashboard: Raw snap size: ${snapshot.docs.length}. Metadata: ${snapshot.metadata.fromCache ? 'from cache' : 'from server'}`);
         const clientsList = snapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() as any }))
             .filter(p => {
-                const role = p.role?.toLowerCase() || '';
-                return role === 'client' || role === 'cliente' || !role;
+                const role = (p.role || '').toLowerCase();
+                const isMatch = role === 'client' || role === 'cliente' || !role;
+                if (!isMatch) console.log(`Dashboard: Filtering out profile ${p.id} with role ${role}`);
+                return isMatch;
             });
         
         console.log(`Dashboard: Final client list size: ${clientsList.length}`);
@@ -206,6 +242,30 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
 
     return () => unsubClients();
   }, [showAdminView, setSelectedClient, setActiveTab]);
+
+    const getDynamicNotices = () => {
+        const notices = [];
+        
+        if (banks.length === 0) {
+            notices.push({ title: 'Cadastrar Contas', time: 'Pendente', type: 'warning', action: 'reconciliation' });
+        } else {
+            notices.push({ title: 'Saldos Integrados', time: `${banks.length} contas ativas`, type: 'info', action: 'reconciliation' });
+        }
+
+        if (chartData.length > 0 && chartData[0].name !== 'Sem Dados') {
+            notices.push({ title: 'Fluxo de Caixa', time: 'Visualizando Período', type: 'info', action: 'reports' });
+        } else {
+            notices.push({ title: 'Lançar Movimentação', time: 'Pendente', type: 'warning', action: 'financial' });
+        }
+
+        if (notices.length === 0) {
+            notices.push({ title: 'Sistema Operacional', time: 'Tudo em dia', type: 'info', action: 'dashboard' });
+        }
+
+        return notices;
+    };
+
+    const notices = getDynamicNotices();
 
     if (showAdminView) {
         return (
@@ -294,6 +354,29 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                                 <div className="py-20 text-center text-slate-300">
                                     <Users size={48} className="mx-auto mb-4 opacity-20" />
                                     <p className="font-bold text-slate-400">Nenhum cliente cadastrado ainda.</p>
+                                    <Button 
+                                        variant="outline" 
+                                        className="mt-4" 
+                                        onClick={async () => {
+                                            const id = `test_${Date.now()}`;
+                                            try {
+                                                await setDoc(doc(db, 'userProfiles', id), {
+                                                    name: 'Empresa Teste',
+                                                    companyName: 'Fluxo Inteligente Teste',
+                                                    email: 'teste@exemplo.com',
+                                                    role: 'client',
+                                                    status: 'Ativo',
+                                                    createdAt: new Date()
+                                                });
+                                                console.log("Test client created!");
+                                            } catch (err) {
+                                                console.error("Failed to create test client:", err);
+                                                alert("Erro ao criar cliente teste: " + (err instanceof Error ? err.message : String(err)));
+                                            }
+                                        }}
+                                    >
+                                        Criar Empresa de Teste
+                                    </Button>
                                 </div>
                             ) : (
                                 <>
@@ -428,19 +511,13 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                         <Card className="p-6 border-slate-100 shadow-sm rounded-3xl bg-white">
                             <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4">Avisos Rápidos</h3>
                             <div className="space-y-3">
-                                {[
-                                    { text: 'Novo documento enviado por Tech Solutions', time: '10m atrás' },
-                                    { text: 'Mensagem de suporte pendente', time: '1h atrás' },
-                                    { text: 'Relatório mensal de Padaria Alpha atrasado', time: '2h atrás' }
-                                ].map((msg, i) => (
-                                    <div key={i} className="flex gap-3 items-start">
-                                        <div className="w-1 h-1 rounded-full bg-primary mt-1.5 shrink-0" />
-                                        <div>
-                                            <p className="text-[10px] font-bold text-slate-700 leading-tight">{msg.text}</p>
-                                            <p className="text-[8px] text-slate-400 mt-0.5">{msg.time}</p>
-                                        </div>
+                                <div className="flex gap-3 items-start">
+                                    <div className="w-1 h-1 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-700 leading-tight">Sistema operando normalmente</p>
+                                        <p className="text-[8px] text-slate-400 mt-0.5">Sem pendências críticas</p>
                                     </div>
-                                ))}
+                                </div>
                             </div>
                         </Card>
                     </div>
@@ -457,33 +534,57 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-primary/20 rounded-full blur-[100px]" />
           <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-secondary/10 rounded-full blur-[80px]" />
           
-          <div className="relative z-10 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest mb-4 backdrop-blur-md">
-                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                 Sua Gestão em Tempo Real
+          <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
+              <div className="max-w-2xl">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest mb-4 backdrop-blur-md">
+                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                     Sua Gestão em Tempo Real
+                  </div>
+                  <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-3 uppercase leading-[0.9]">
+                      Bem-vindo,<br/>
+                      <span className="text-secondary">{firstName}</span>.
+                  </h1>
+                  <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-lg mb-6">
+                      Sua central de relatórios e processos. Organizamos sua rotina financeira para que você foque no crescimento do seu negócio.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                      <Button 
+                        variant="primary" 
+                        className="rounded-xl px-6 py-5 h-auto bg-white text-slate-900 hover:bg-slate-100 font-black uppercase tracking-widest text-[10px]"
+                        onClick={() => setActiveTab('reports')}
+                      >
+                            Relatórios Recentes <ArrowUpRight size={16} className="ml-2" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        className="rounded-xl px-6 py-5 h-auto border border-white/20 text-white hover:bg-white/10 font-black uppercase tracking-widest text-[10px]"
+                        onClick={() => setActiveTab('support')}
+                      >
+                            Consultoria Especializada
+                      </Button>
+                  </div>
               </div>
-              <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-3 uppercase leading-[0.9]">
-                  Bem-vindo,<br/>
-                  <span className="text-secondary">{firstName}</span>.
-              </h1>
-              <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-lg mb-6">
-                  Sua central de relatórios e processos. Organizamos sua rotina financeira para que você foque no crescimento do seu negócio.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                  <Button 
-                    variant="primary" 
-                    className="rounded-xl px-6 py-5 h-auto bg-white text-slate-900 hover:bg-slate-100 font-black uppercase tracking-widest text-[10px]"
-                    onClick={() => setActiveTab('reports')}
-                  >
-                        Relatórios Recentes <ArrowUpRight size={16} className="ml-2" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    className="rounded-xl px-6 py-5 h-auto border border-white/20 text-white hover:bg-white/10 font-black uppercase tracking-widest text-[10px]"
-                    onClick={() => setActiveTab('support')}
-                  >
-                        Consultoria Especializada
-                  </Button>
+
+              <div className="flex flex-col gap-2 shrink-0 md:mb-2">
+                <label className="text-[10px] font-black text-white/40 uppercase tracking-widest px-1">Período de Análise</label>
+                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md transition-all hover:bg-white/10">
+                    <Calendar size={18} className="text-secondary" />
+                    <div className="flex items-center gap-3">
+                      <input 
+                          type="date"
+                          value={activeFilters.startDate}
+                          onChange={(e) => setActiveFilters({...activeFilters, startDate: e.target.value})}
+                          className="bg-transparent text-xs font-black text-white uppercase tracking-widest outline-none cursor-pointer p-0"
+                      />
+                      <span className="text-[8px] font-black text-white/20">ATÉ</span>
+                      <input 
+                          type="date"
+                          value={activeFilters.endDate}
+                          onChange={(e) => setActiveFilters({...activeFilters, endDate: e.target.value})}
+                          className="bg-transparent text-xs font-black text-white uppercase tracking-widest outline-none cursor-pointer p-0"
+                      />
+                    </div>
+                </div>
               </div>
           </div>
       </div>
@@ -497,7 +598,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                           <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
                               <ArrowUpCircle size={18} />
                           </div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Receber (Mês)</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Receber (Período)</span>
                       </div>
                       <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToReceive)}</h3>
                   </Card>
@@ -506,7 +607,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                           <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
                               <ArrowDownCircle size={18} />
                           </div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Mês)</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Período)</span>
                       </div>
                       <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToPay)}</h3>
                   </Card>
@@ -630,7 +731,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                       <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Visão geral do faturamento vs despesas</p>
                   </div>
                   <div className="px-4 py-1.5 bg-slate-50 rounded-xl border border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                      Evolução Semestral
+                      Evolução do Período
                   </div>
               </div>
               
@@ -656,7 +757,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                     </div>
                 )}
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                    <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                         <XAxis 
                             dataKey="name" 
@@ -700,14 +801,10 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                     </button>
                   </div>
                   <div className="space-y-3">
-                      {[
-                        { title: 'Enviar Notas', time: 'Restam 2 dias', type: 'urgent' },
-                        { title: 'Conciliar Extrato', time: 'Pendente', type: 'warning' },
-                        { title: 'Agenda Mensal', time: 'Ver Planejamento', type: 'info' }
-                      ].map((step, i) => (
+                      {notices.map((step, i) => (
                         <div 
                             key={i} 
-                            onClick={() => setActiveTab('agenda')}
+                            onClick={() => setActiveTab(step.action as any)}
                             className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-slate-100 hover:translate-x-1 transition-all cursor-pointer group/item"
                         >
                             <div className={cn(

@@ -65,6 +65,10 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
         const d = new Date();
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     }); // YYYY-MM
+    const [dateRange, setDateRange] = useState({
+        startDate: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`,
+        endDate: new Date().toISOString().split('T')[0]
+    });
 
     useEffect(() => {
         const unsubscribeAccounts = onSnapshot(query(
@@ -190,10 +194,20 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
         return n2Accounts.map(a => a.name);
     };
 
-    const getMonthStats = (targetMonth: string) => {
-        const monthEntries = entries.filter(e => {
-            const entryMonth = getYearMonth(e.date || e.month);
-            return entryMonth === targetMonth;
+    const getMonthStats = (start: string, end?: string) => {
+        let s = start;
+        let e = end;
+        if (!e) {
+            // Assume start is YYYY-MM
+            s = `${start}-01`;
+            const [y, m] = start.split('-').map(Number);
+            const lastDay = new Date(y, m, 0).getDate();
+            e = `${start}-${String(lastDay).padStart(2, '0')}`;
+        }
+        
+        const monthEntries = entries.filter(item => {
+            const entryDate = item.date || item.month;
+            return entryDate >= s && entryDate <= e!;
         });
         
         const stats: any = {
@@ -245,7 +259,7 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
         return stats;
     };
 
-    const currentStats = getMonthStats(currentMonthStr);
+    const currentStats = getMonthStats(dateRange.startDate, dateRange.endDate);
     
     // Dynamic categories based on currentStats
     const getTopLevelCategories = (stats: any, type: 'receber' | 'pagar') => {
@@ -535,48 +549,25 @@ export const CashFlowReport = ({ clientId, clientName }: CashFlowReportProps) =>
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2 bg-slate-50 px-4 py-1.5 rounded-2xl border border-slate-200">
                         <Calendar size={14} className="text-slate-400" />
-                        <select 
-                            value={currentMonth.split('-')[1]} 
-                            onChange={(e) => {
-                                const newMonth = e.target.value;
-                                const year = currentMonth.split('-')[0];
-                                setCurrentMonth(`${year}-${newMonth}`);
-                            }}
-                            className="bg-transparent text-[10px] font-black text-slate-600 uppercase tracking-widest outline-none cursor-pointer"
-                        >
-                            <option value="01">Janeiro</option>
-                            <option value="02">Fevereiro</option>
-                            <option value="03">Março</option>
-                            <option value="04">Abril</option>
-                            <option value="05">Maio</option>
-                            <option value="06">Junho</option>
-                            <option value="07">Julho</option>
-                            <option value="08">Agosto</option>
-                            <option value="09">Setembro</option>
-                            <option value="10">Outubro</option>
-                            <option value="11">Novembro</option>
-                            <option value="12">Dezembro</option>
-                        </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 bg-slate-50 px-4 py-1.5 rounded-2xl border border-slate-200">
-                        <select 
-                            value={currentMonth.split('-')[0]} 
-                            onChange={(e) => {
-                                const newYear = e.target.value;
-                                const month = currentMonth.split('-')[1];
-                                setCurrentMonth(`${newYear}-${month}`);
-                            }}
-                            className="bg-transparent text-[10px] font-black text-slate-600 uppercase tracking-widest outline-none cursor-pointer"
-                        >
-                            {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(year => (
-                                <option key={year} value={year.toString()}>{year}</option>
-                            ))}
-                        </select>
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="date"
+                                value={dateRange.startDate}
+                                onChange={(e) => setDateRange({...dateRange, startDate: e.target.value})}
+                                className="bg-transparent text-[10px] font-black text-slate-600 uppercase tracking-widest outline-none cursor-pointer"
+                            />
+                            <span className="text-[10px] font-black text-slate-300">ATÉ</span>
+                            <input 
+                                type="date"
+                                value={dateRange.endDate}
+                                onChange={(e) => setDateRange({...dateRange, endDate: e.target.value})}
+                                className="bg-transparent text-[10px] font-black text-slate-600 uppercase tracking-widest outline-none cursor-pointer"
+                            />
+                        </div>
                     </div>
                     
                     <span className="hidden md:inline text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">
-                        Relatório Mensal
+                        Período Selecionado
                     </span>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto">

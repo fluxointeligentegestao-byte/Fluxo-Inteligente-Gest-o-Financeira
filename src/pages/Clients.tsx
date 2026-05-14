@@ -122,7 +122,10 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
             console.log(`Clients fetched: ${snapshot.docs.length}`);
             const clientList = snapshot.docs
                 .map(doc => ({ id: doc.id, ...doc.data() as any }))
-                .filter(p => p.role === 'client' || !p.role);
+                .filter(p => {
+                    const role = (p.role || '').toLowerCase();
+                    return role === 'client' || role === 'cliente' || !role;
+                });
             
             // Sort manually by createdAt if exists
             const sortedClients = clientList.sort((a: any, b: any) => {

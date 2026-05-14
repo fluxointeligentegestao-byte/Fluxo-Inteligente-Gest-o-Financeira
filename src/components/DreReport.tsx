@@ -37,8 +37,10 @@ interface DreReportProps {
 }
 
 const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreReportProps) => {
-    const [selectedYear, setSelectedYear] = useState(initialYear || new Date().getFullYear().toString());
-    const [currentMonth, setCurrentMonth] = useState(`${selectedYear}-${String(new Date().getMonth() + 1).padStart(2, '0')}`);
+    const [dateRange, setDateRange] = useState({
+        startDate: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`,
+        endDate: new Date().toISOString().split('T')[0]
+    });
     const [isPreviewing, setIsPreviewing] = useState(false);
     const [agendaEntries, setAgendaEntries] = useState<any[]>([]);
     const [transactionEntries, setTransactionEntries] = useState<any[]>([]);
@@ -133,25 +135,34 @@ const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreRepor
     ];
 
     // Real calculation logic using entries from Firestore
-    const getDreData = (monthYear: string) => {
-        const [year, month] = monthYear.split('-');
-        const monthYearStr = `${year}-${month}`;
-        
-        // Previous month logic
-        const date = new Date(parseInt(year), parseInt(month) - 1, 1);
-        date.setMonth(date.getMonth() - 1);
-        const prevMonthYearStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        
-        const filterByMonth = (targetMonth: string) => {
+    const getDreData = (startDate: string, endDate: string) => {
+        const filterByPeriod = (start: string, end: string) => {
             return entries.filter(e => {
-                const entryMonth = getYearMonth(e.date || e.month);
-                return entryMonth === targetMonth && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado');
+                const date = e.date || e.month;
+                return date >= start && date <= end && (e.status === 'Pago' || e.status === 'Recebido' || e.status === 'Conciliado');
             });
         };
 
-        const currentMonthEntries = filterByMonth(monthYearStr);
-        const prevMonthEntries = filterByMonth(prevMonthYearStr);
-        const [pYear, pMonth] = prevMonthYearStr.split('-');
+        // Calculate previous period of same duration
+        const start = new Date(startDate + 'T12:00:00');
+        const end = new Date(endDate + 'T12:00:00');
+        const durationDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        
+        const prevEnd = new Date(start.getTime());
+        prevEnd.setDate(prevEnd.getDate() - 1);
+        const prevStart = new Date(prevEnd.getTime());
+        prevStart.setDate(prevStart.getDate() - durationDays + 1);
+
+        const prevStartStr = prevStart.toISOString().split('T')[0];
+        const prevEndStr = prevEnd.toISOString().split('T')[0];
+
+        const currentEntries = filterByPeriod(startDate, endDate);
+        const prevEntries = filterByPeriod(prevStartStr, prevEndStr);
+
+        const calcVar = (curr: number, prev: number) => {
+            if (prev === 0) return curr === 0 ? 0 : 100;
+            return ((curr - prev) / Math.abs(prev)) * 100;
+        };
 
         const sumByAccounts = (list: any[], codes: string[]) => {
             return list.filter(e => {
@@ -161,71 +172,61 @@ const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreRepor
             }).reduce((acc, curr) => acc + curr.value, 0);
         };
 
-        const sumByGroup = (list: any[], group: string) => {
-            return list.filter(e => {
-                const acc = effectiveAccounts.find(a => a.id === e.accountId);
-                return acc?.group === group;
-            }).reduce((acc, curr) => acc + curr.value, 0);
-        };
-
         // Calculations Current
-        const receitaBrutaServ = sumByAccounts(currentMonthEntries, ['1.1']);
-        const receitaBrutaVend = sumByAccounts(currentMonthEntries, ['1.2']);
+        const receitaBrutaServ = sumByAccounts(currentEntries, ['1.1']);
+        const receitaBrutaVend = sumByAccounts(currentEntries, ['1.2']);
         const receitaBrutaTotal = receitaBrutaServ + receitaBrutaVend;
         
-        const deducoes = sumByAccounts(currentMonthEntries, ['1.3']);
-        const impostosRec = sumByAccounts(currentMonthEntries, ['1.4']);
+        const deducoes = sumByAccounts(currentEntries, ['1.3']);
+        const impostosRec = sumByAccounts(currentEntries, ['1.4']);
         const receitaLiquida = receitaBrutaTotal - deducoes - impostosRec;
 
-        const custosDir = sumByAccounts(currentMonthEntries, ['2']);
+        const custosDir = sumByAccounts(currentEntries, ['2']);
         const lucroBruto = receitaLiquida - custosDir;
 
-        const despPessoal = sumByAccounts(currentMonthEntries, ['3.1']);
-        const despOcupacao = sumByAccounts(currentMonthEntries, ['3.2']);
-        const despTecnologia = sumByAccounts(currentMonthEntries, ['3.3']);
-        const despAdmin = sumByAccounts(currentMonthEntries, ['3.4']);
-        const despVendas = sumByAccounts(currentMonthEntries, ['3.5']);
-        const despOutras = sumByAccounts(currentMonthEntries, ['3.6']);
+        const despPessoal = sumByAccounts(currentEntries, ['3.1']);
+        const despOcupacao = sumByAccounts(currentEntries, ['3.2']);
+        const despTecnologia = sumByAccounts(currentEntries, ['3.3']);
+        const despAdmin = sumByAccounts(currentEntries, ['3.4']);
+        const despVendas = sumByAccounts(currentEntries, ['3.5']);
+        const despOutras = sumByAccounts(currentEntries, ['3.6']);
         const totalDespesas = despPessoal + despOcupacao + despTecnologia + despAdmin + despVendas + despOutras;
 
         const ebitda = lucroBruto - totalDespesas;
 
-        const recFin = sumByAccounts(currentMonthEntries, ['4.2']);
-        const despFin = sumByAccounts(currentMonthEntries, ['4.1']);
+        const recFin = sumByAccounts(currentEntries, ['4.2']);
+        const despFin = sumByAccounts(currentEntries, ['4.1']);
         const ebit = ebitda + recFin - despFin;
 
-        const tributos = sumByAccounts(currentMonthEntries, ['5']);
+        const tributos = sumByAccounts(currentEntries, ['5']);
         const lucroLiquido = ebit - tributos;
 
         // Calculations Previous
-        const pReceitaBrutaServ = sumByAccounts(prevMonthEntries, ['1.1']);
-        const pReceitaBrutaVend = sumByAccounts(prevMonthEntries, ['1.2']);
+        const pReceitaBrutaServ = sumByAccounts(prevEntries, ['1.1']);
+        const pReceitaBrutaVend = sumByAccounts(prevEntries, ['1.2']);
         const pReceitaBrutaTotal = pReceitaBrutaServ + pReceitaBrutaVend;
-        const pDeducoes = sumByAccounts(prevMonthEntries, ['1.3']);
-        const pImpostosRec = sumByAccounts(prevMonthEntries, ['1.4']);
+        const pDeducoes = sumByAccounts(prevEntries, ['1.3']);
+        const pImpostosRec = sumByAccounts(prevEntries, ['1.4']);
         const pReceitaLiquida = pReceitaBrutaTotal - pDeducoes - pImpostosRec;
-        const pCustosDir = sumByAccounts(prevMonthEntries, ['2']);
+        const pCustosDir = sumByAccounts(prevEntries, ['2']);
         const pLucroBruto = pReceitaLiquida - pCustosDir;
-        const pDespTotal = sumByAccounts(prevMonthEntries, ['3']);
+        const pDespTotal = sumByAccounts(prevEntries, ['3']);
         const pEbitda = pLucroBruto - pDespTotal;
-        const pRecFin = sumByAccounts(prevMonthEntries, ['4.2']);
-        const pDespFin = sumByAccounts(prevMonthEntries, ['4.1']);
+        const pRecFin = sumByAccounts(prevEntries, ['4.2']);
+        const pDespFin = sumByAccounts(prevEntries, ['4.1']);
         const pEbit = pEbitda + pRecFin - pDespFin;
-        const pTributos = sumByAccounts(prevMonthEntries, ['5']);
+        const pTributos = sumByAccounts(prevEntries, ['5']);
         const pLucroLiquido = pEbit - pTributos;
 
-        const calcVar = (curr: number, prev: number) => {
-            if (prev === 0) return curr === 0 ? 0 : 100;
-            return ((curr - prev) / Math.abs(prev)) * 100;
+        const formatDateRange = (s: string, e: string) => {
+            const start = new Date(s + 'T12:00:00');
+            const end = new Date(e + 'T12:00:00');
+            return `${start.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} - ${end.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })}`;
         };
 
-        const currentMonthName = monthNames[parseInt(month) - 1];
-        const prevMonthIdx = parseInt(pMonth) - 1;
-        const prevMonthNameShort = monthNames[prevMonthIdx].substring(0, 3).toUpperCase();
-
         return {
-            month: `${currentMonthName.toUpperCase()} / ${year}`,
-            prevMonth: `${prevMonthNameShort}/${pYear}`,
+            month: formatDateRange(startDate, endDate),
+            prevMonth: formatDateRange(prevStartStr, prevEndStr),
             indicators: [
                 { label: 'RECEITA BRUTA', value: receitaBrutaTotal, variation: calcVar(receitaBrutaTotal, pReceitaBrutaTotal), desc: 'Faturamento antes de impostos', icon: DollarSign, color: 'border-blue-500' },
                 { label: 'RECEITA LÍQUIDA', value: receitaLiquida, variation: calcVar(receitaLiquida, pReceitaLiquida), desc: 'Receita menos deduções', icon: Target, color: 'border-emerald-500' },
@@ -244,12 +245,12 @@ const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreRepor
                 { label: '(-) Custos Operacionais', current: -custosDir, av: receitaBrutaTotal > 0 ? (-custosDir / receitaBrutaTotal) * 100 : 0, prev: -pCustosDir, var: calcVar(custosDir, pCustosDir), type: 'item' },
                 { label: '= LUCRO BRUTO', current: lucroBruto, av: receitaBrutaTotal > 0 ? (lucroBruto / receitaBrutaTotal) * 100 : 0, prev: pLucroBruto, var: calcVar(lucroBruto, pLucroBruto), type: 'highlight' },
                 { label: 'DESPESAS OPERACIONAIS', type: 'section' },
-                { label: '(-) Pessoal e Encargos', current: -despPessoal, av: receitaBrutaTotal > 0 ? (-despPessoal / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.1']), var: calcVar(despPessoal, sumByAccounts(prevMonthEntries, ['3.1'])), type: 'item' },
-                { label: '(-) Ocupação e Instalações', current: -despOcupacao, av: receitaBrutaTotal > 0 ? (-despOcupacao / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.2']), var: calcVar(despOcupacao, sumByAccounts(prevMonthEntries, ['3.2'])), type: 'item' },
-                { label: '(-) Comunicação e Tecnologia', current: -despTecnologia, av: receitaBrutaTotal > 0 ? (-despTecnologia / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.3']), var: calcVar(despTecnologia, sumByAccounts(prevMonthEntries, ['3.3'])), type: 'item' },
-                { label: '(-) Despesas Administrativas', current: -despAdmin, av: receitaBrutaTotal > 0 ? (-despAdmin / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.4']), var: calcVar(despAdmin, sumByAccounts(prevMonthEntries, ['3.4'])), type: 'item' },
-                { label: '(-) Vendas e Marketing', current: -despVendas, av: receitaBrutaTotal > 0 ? (-despVendas / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.5']), var: calcVar(despVendas, sumByAccounts(prevMonthEntries, ['3.5'])), type: 'item' },
-                { label: '(-) Outras Despesas Operacionais', current: -despOutras, av: receitaBrutaTotal > 0 ? (-despOutras / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevMonthEntries, ['3.6']), var: calcVar(despOutras, sumByAccounts(prevMonthEntries, ['3.6'])), type: 'item' },
+                { label: '(-) Pessoal e Encargos', current: -despPessoal, av: receitaBrutaTotal > 0 ? (-despPessoal / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevEntries, ['3.1']), var: calcVar(despPessoal, sumByAccounts(prevEntries, ['3.1'])), type: 'item' },
+                { label: '(-) Ocupação e Instalações', current: -despOcupacao, av: receitaBrutaTotal > 0 ? (-despOcupacao / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevEntries, ['3.2']), var: calcVar(despOcupacao, sumByAccounts(prevEntries, ['3.2'])), type: 'item' },
+                { label: '(-) Comunicação e Tecnologia', current: -despTecnologia, av: receitaBrutaTotal > 0 ? (-despTecnologia / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevEntries, ['3.3']), var: calcVar(despTecnologia, sumByAccounts(prevEntries, ['3.3'])), type: 'item' },
+                { label: '(-) Despesas Administrativas', current: -despAdmin, av: receitaBrutaTotal > 0 ? (-despAdmin / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevEntries, ['3.4']), var: calcVar(despAdmin, sumByAccounts(prevEntries, ['3.4'])), type: 'item' },
+                { label: '(-) Vendas e Marketing', current: -despVendas, av: receitaBrutaTotal > 0 ? (-despVendas / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevEntries, ['3.5']), var: calcVar(despVendas, sumByAccounts(prevEntries, ['3.5'])), type: 'item' },
+                { label: '(-) Outras Despesas Operacionais', current: -despOutras, av: receitaBrutaTotal > 0 ? (-despOutras / receitaBrutaTotal) * 100 : 0, prev: -sumByAccounts(prevEntries, ['3.6']), var: calcVar(despOutras, sumByAccounts(prevEntries, ['3.6'])), type: 'item' },
                 { label: 'TOTAL DESPESAS OPERAC.', current: -totalDespesas, av: receitaBrutaTotal > 0 ? (-totalDespesas / receitaBrutaTotal) * 100 : 0, prev: -pDespTotal, var: calcVar(totalDespesas, pDespTotal), type: 'total_red' },
                 { label: '= EBITDA', current: ebitda, av: receitaBrutaTotal > 0 ? (ebitda / receitaBrutaTotal) * 100 : 100, prev: pEbitda, var: calcVar(ebitda, pEbitda), type: 'highlight_green' },
                 { label: 'RESULTADO FINANC.', type: 'section' },
@@ -262,7 +263,7 @@ const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreRepor
         };
     };
 
-    const data = getDreData(currentMonth);
+    const data = getDreData(dateRange.startDate, dateRange.endDate);
 
     const handleDownloadPDF = () => {
         const doc = new jsPDF({
@@ -414,37 +415,25 @@ const DreReport = ({ clientId, clientName, selectedYear: initialYear }: DreRepor
     return (
         <div className="space-y-8 pt-6 animate-in fade-in duration-700">
             {/* Header / Selector */}
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm no-print">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm no-print">
                 <div className="flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2 bg-slate-50 px-5 py-2 rounded-2xl border border-slate-200">
                         <Calendar size={14} className="text-slate-400" />
-                        <select 
-                            value={currentMonth.split('-')[1]} 
-                            onChange={(e) => {
-                                const newMonth = e.target.value;
-                                setCurrentMonth(`${selectedYear}-${newMonth}`);
-                            }}
-                            className="bg-transparent text-[11px] font-black text-slate-700 uppercase tracking-widest outline-none cursor-pointer"
-                        >
-                            {monthNames.map((m, i) => (
-                                <option key={i} value={String(i + 1).padStart(2, '0')}>{m}</option>
-                            ))}
-                        </select>
-                        <div className="w-[1px] h-4 bg-slate-200 mx-1" />
-                        <select 
-                            value={selectedYear} 
-                            onChange={(e) => {
-                                const newYear = e.target.value;
-                                setSelectedYear(newYear);
-                                setCurrentMonth(`${newYear}-${currentMonth.split('-')[1]}`);
-                            }}
-                            className="bg-transparent text-[11px] font-black text-slate-700 uppercase tracking-widest outline-none cursor-pointer"
-                        >
-                            <option value="2024">2024</option>
-                            <option value="2025">2025</option>
-                            <option value="2026">2026</option>
-                            <option value="2027">2027</option>
-                        </select>
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="date"
+                                value={dateRange.startDate}
+                                onChange={(e) => setDateRange({...dateRange, startDate: e.target.value})}
+                                className="bg-transparent text-[11px] font-black text-slate-700 uppercase tracking-widest outline-none cursor-pointer"
+                            />
+                            <span className="text-[10px] font-black text-slate-300">ATÉ</span>
+                            <input 
+                                type="date"
+                                value={dateRange.endDate}
+                                onChange={(e) => setDateRange({...dateRange, endDate: e.target.value})}
+                                className="bg-transparent text-[11px] font-black text-slate-700 uppercase tracking-widest outline-none cursor-pointer"
+                            />
+                        </div>
                     </div>
                 </div>
 

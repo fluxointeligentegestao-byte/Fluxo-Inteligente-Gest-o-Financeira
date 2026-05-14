@@ -33,17 +33,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const userIsAdmin = user.email?.toLowerCase() === 'fluxointeligente.gestao@gmail.com'.toLowerCase() || profile?.role === 'admin';
     const path = 'system_configs/plans_config';
-    const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), (docSnap) => {
+    const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), async (docSnap) => {
       if (docSnap.exists()) {
         setPlansConfig(docSnap.data().plans);
+      } else if (userIsAdmin) {
+        // Init default plans if admin and doesn't exist
+        console.log("Initializing default plans config...");
+        const defaultPlans = [
+          { id: 'bronze', name: 'Bronze', price: 0, features: ['🎯 Dashboards', '📁 Documentos'] },
+          { id: 'silver', name: 'Prata', price: 499, features: ['🎯 Dashboards', '📁 Documentos', '📊 Relatórios Gerenciais'] },
+          { id: 'gold', name: 'Ouro', price: 999, features: ['🎯 Dashboards', '📁 Documentos', '📊 Relatórios Gerenciais', '💬 Consultoria'] },
+          { id: 'premium', name: 'Premium (Full)', price: 1999, features: ['🎯 Dashboards', '📁 Documentos', '📊 Relatórios Gerenciais', '💬 Consultoria', '🚀 Suporte Prioritário'] }
+        ];
+        try {
+          await setDoc(doc(db, 'system_configs', 'plans_config'), { 
+            plans: defaultPlans,
+            updatedAt: serverTimestamp() 
+          });
+          setPlansConfig(defaultPlans);
+        } catch (err) {
+          console.error("Failed to init plans config:", err);
+        }
       }
     }, (error) => {
       console.error("Error listening to plans config:", error);
       handleFirestoreError(error, OperationType.GET, path);
     });
     return () => unsubscribe();
-  }, [user]);
+  }, [user, profile]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {

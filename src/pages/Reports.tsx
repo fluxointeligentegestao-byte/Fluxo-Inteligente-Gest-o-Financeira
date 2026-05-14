@@ -45,6 +45,7 @@ import { ReconciliationReport } from '../components/ReconciliationReport';
 import { CashFlowReport } from '../components/CashFlowReport';
 import { ReportsDashboard } from '../components/ReportsDashboard';
 import DreReport from '../components/DreReport';
+import { MonthlyReport } from '../components/MonthlyReport';
 import { canAccessReport, UserPlan, PLAN_CONFIG, normalizePlan } from '../lib/planUtils';
 
 interface Report {
@@ -456,7 +457,7 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
                             )}
                             
                             {reportClientId ? (
-                                <ReportsDashboard 
+                                <MonthlyReport 
                                     clientId={reportClientId} 
                                     clientName={isAdmin ? (clients.find(c => c.id === reportClientId)?.name || 'Cliente') : (profile?.name || 'Cliente')} 
                                 />

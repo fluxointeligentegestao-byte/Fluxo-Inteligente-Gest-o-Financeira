@@ -36,6 +36,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return { 
               id: doc.id, 
               name: data.name || data.companyName || 'Sem nome',
+              companyName: data.companyName || '',
               role: data.role?.toLowerCase() || '',
               ...data 
             };
@@ -56,6 +57,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return {
               id: profile.id,
               name: profile.name || 'Sem nome',
+              companyName: profile.companyName || '',
               planId: planId
             };
           });
@@ -65,7 +67,7 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }, (error) => {
         console.error("Error listening to clients in ClientContext:", error);
         if (error.message.includes('permission-denied')) {
-          console.warn("Permission denied for listing userProfiles. Check Firestore rules.");
+          console.log("Notice: Permission denied for listing userProfiles. This is expected if the user is not an administrator.");
         }
       });
       return () => unsubscribe();
