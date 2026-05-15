@@ -110,8 +110,8 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
         { id: 'support', label: 'Suporte', icon: MessageSquare, hasAccess: true },
       ]
     : [
-        { id: 'profile', label: 'Meu Perfil', icon: User },
         { id: 'dashboard', label: 'Página Inicial', icon: Home },
+        { id: 'profile', label: 'Meu Perfil', icon: User },
         { id: 'reports', label: 'Meus Relatórios', icon: FileText },
         { id: 'documents', label: 'Meus Documentos', icon: Upload },
         { id: 'plans', label: 'Planos', icon: CreditCard },

@@ -580,7 +580,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
           </Card>
           <Card className={cn(
               "p-5 border-none shadow-xl shadow-slate-200/20 group hover:translate-y-[-2px] transition-all",
-              stats.clientBalance >= 0 ? "bg-indigo-600 text-white" : "bg-rose-600 text-white"
+              stats.clientBalance >= 0 ? "bg-slate-900 text-white" : "bg-rose-600 text-white"
           )}>
               <div className="flex items-center gap-3 mb-3">
                   <div className="w-8 h-8 rounded-lg bg-white/10 text-white flex items-center justify-center">
@@ -588,7 +588,12 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                   </div>
                   <span className="text-[9px] font-black text-white/50 uppercase tracking-widest">Fluxo de Caixa</span>
               </div>
-              <h3 className="text-xl font-black">{formatCurrency(stats.clientBalance)}</h3>
+              <h3 className={cn(
+                  "text-xl font-black",
+                  stats.clientBalance >= 0 ? "text-secondary" : "text-white"
+              )}>
+                  {formatCurrency(stats.clientBalance)}
+              </h3>
           </Card>
       </div>
 
@@ -611,7 +616,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                       </Button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto max-h-[240px] pr-2 custom-scrollbar">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 pr-2 custom-scrollbar">
                       {banks.length === 0 ? (
                           <div className="col-span-full py-12 text-center text-slate-300">
                               <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />

@@ -43,7 +43,7 @@ function AppContent() {
       {activeTab === 'reports' && <Reports setActiveTab={handleTabChange} />}
       {activeTab === 'clients' && <Clients setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}
       {activeTab === 'documents' && <Documents setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}
-      {activeTab === 'plans' && <Plans onBack={() => handleTabChange(prevTab)} />}
+      {activeTab === 'plans' && <Plans onBack={() => handleTabChange('dashboard')} />}
       {activeTab === 'support' && <Support setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}
       {activeTab === 'agenda' && <FinancialAgenda setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}
       {activeTab === 'transactions' && <Transactions setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}

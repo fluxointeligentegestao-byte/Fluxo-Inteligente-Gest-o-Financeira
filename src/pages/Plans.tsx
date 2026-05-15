@@ -89,27 +89,25 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
     return (
         <div className="space-y-16 pb-20">
             {/* Minimalist Header */}
-            <div className="max-w-2xl mx-auto space-y-6 pt-4 text-center">
-                {onBack && (
-                    <div className="flex justify-center mb-2">
-                        <Button 
-                            variant="ghost" 
+            <div className="max-w-6xl mx-auto space-y-2 pt-4 text-left">
+                <div className="flex items-center gap-4 mb-4">
+                    {onBack && (
+                        <button 
                             onClick={onBack}
-                            className="rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors flex items-center gap-2"
+                            className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
                         >
-                            <ChevronLeft size={16} /> Voltar para o Início
-                        </Button>
+                            <ChevronLeft size={24} />
+                        </button>
+                    )}
+                    <div>
+                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Planos</h1>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                            Escopo e Arquitetura BPO
+                        </p>
                     </div>
-                )}
-                <div className="space-y-4">
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Smart BPO Solutions</span>
-                    <h1 className="text-4xl text-slate-900 font-black uppercase tracking-tight leading-none">
-                        Arquitetura <span className="text-primary">Financeira</span>
-                    </h1>
                 </div>
-                <div className="w-12 h-1 bg-slate-100 mx-auto rounded-full" />
-                <p className="text-slate-500 text-sm font-medium leading-relaxed">
-                    Escolha a estrutura ideal para o seu faturamento. Eficiência máxima em gestão tributária e operacional.
+                <p className="text-slate-500 text-sm font-medium leading-relaxed max-w-2xl">
+                    Escolha a estrutura ideal para o seu faturamento. Eficiência máxima em gestão tributária e operacional para acelerar o seu crescimento.
                 </p>
             </div>
 
