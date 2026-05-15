@@ -12,7 +12,7 @@ export const Logo = ({ className, showText = true, variant = 'dark', size = 48 }
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <img 
-        src="/favicon.svg" 
+        src="/favicon.png" 
         alt="Fluxo Inteligente Logo" 
         style={{ width: size, height: size }}
         className="object-contain"
