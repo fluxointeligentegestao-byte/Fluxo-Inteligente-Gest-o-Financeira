@@ -11,6 +11,13 @@ interface LogoProps {
 export const Logo = ({ className, showText = true, variant = 'dark', size = 48 }: LogoProps) => {
   return (
     <div className={cn("flex items-center gap-3", className)}>
+      <img 
+        src="/favicon.svg" 
+        alt="Fluxo Inteligente Logo" 
+        style={{ width: size, height: size }}
+        className="object-contain"
+        referrerPolicy="no-referrer"
+      />
       {showText && (
         <div className="flex flex-col -space-y-1">
           <div className="flex items-center">

@@ -89,24 +89,24 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
     return (
         <div className="space-y-16 pb-20">
             {/* Minimalist Header */}
-            <div className="max-w-6xl mx-auto space-y-2 pt-4 text-left">
-                <div className="flex items-center gap-4 mb-4">
-                    {onBack && (
-                        <button 
-                            onClick={onBack}
-                            className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
-                        >
-                            <ChevronLeft size={24} />
-                        </button>
-                    )}
-                    <div>
+            <div className="max-w-6xl mx-auto space-y-2 pt-4">
+                <div className="flex flex-col gap-4 mb-4">
+                    <div className="flex items-center gap-3">
+                        {onBack && (
+                            <button 
+                                onClick={onBack}
+                                className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
+                            >
+                                <ChevronLeft size={24} />
+                            </button>
+                        )}
                         <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Planos</h1>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                            Escopo e Arquitetura BPO
-                        </p>
                     </div>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest -mt-2">
+                        Escopo e Arquitetura BPO
+                    </p>
                 </div>
-                <p className="text-slate-500 text-sm font-medium leading-relaxed max-w-2xl">
+                <p className="text-slate-500 text-sm font-medium leading-relaxed max-w-2xl px-1">
                     Escolha a estrutura ideal para o seu faturamento. Eficiência máxima em gestão tributária e operacional para acelerar o seu crescimento.
                 </p>
             </div>
