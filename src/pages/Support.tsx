@@ -115,14 +115,12 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
         <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
             <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-4">
-                    {onBack && (
                         <button 
-                            onClick={onBack}
+                            onClick={() => setActiveTab && setActiveTab('dashboard')}
                             className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
                         >
                             <ChevronLeft size={24} />
                         </button>
-                    )}
                     <div>
                         <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Atendimento</h1>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
@@ -173,12 +171,6 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                     {/* Chat Header */}
                     <div className="px-4 md:px-8 py-4 md:py-6 border-b border-slate-50 bg-white flex items-center justify-between shrink-0">
                         <div className="flex items-center gap-2 md:gap-4">
-                            <button 
-                                onClick={() => setActiveTab && setActiveTab('dashboard')}
-                                className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
-                            >
-                                <ArrowLeft size={20} />
-                            </button>
                             <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-primary/5 text-primary flex items-center justify-center border border-primary/10">
                                 <User size={20} className="md:w-6 md:h-6" />
                             </div>
