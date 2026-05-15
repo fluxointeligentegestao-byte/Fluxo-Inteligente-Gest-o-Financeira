@@ -833,7 +833,6 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                             <thead>
                                 <tr className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                     <th className="w-10 py-3 px-4 text-center">Sel</th>
-                                    <th className="w-24 py-3 px-4">Núm. Único</th>
                                     <th className="w-32 py-3 px-4">Tipo</th>
                                     <th className="w-24 py-3 px-4 text-center">Conciliado</th>
                                     <th className="w-32 py-3 px-4">Dt. Conciliação</th>
@@ -873,8 +872,7 @@ export const Reconciliation = ({ setActiveTab, onBack }: ReconciliationProps) =>
                                                             className="w-3.5 h-3.5 rounded border-slate-200 text-primary focus:ring-primary/20"
                                                         />
                                                     </td>
-                                            <td className="w-24 py-2.5 px-4 font-bold text-slate-400">{st.docNumber || `ID-${st.id.substring(0,4)}`}</td>
-                                            <td className="w-32 py-2.5 px-4 font-black text-slate-500 uppercase tracking-tighter">Financeiro</td>
+                                                    <td className="w-32 py-2.5 px-4 font-black text-slate-500 uppercase tracking-tighter">Financeiro</td>
                                             <td className="w-24 py-2.5 px-4 text-center">
                                                 <button 
                                                     onClick={() => toggleConciliation(st)}

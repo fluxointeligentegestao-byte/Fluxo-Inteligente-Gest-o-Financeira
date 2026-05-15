@@ -183,6 +183,10 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
     );
   }
 
+   const currentProfile = isPreviewMode 
+    ? (clients.find(c => c.id === selectedClientId) || profile)
+    : profile;
+
   return (
     <div className="flex min-h-screen bg-background font-sans text-slate-900">
       {/* Sidebar - Desktop */}
@@ -193,7 +197,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
 
         <ClientSelector />
 
-        <nav className="flex-1 px-6 space-y-2">
+        <nav className="flex-1 px-6 space-y-2 overflow-y-auto scrollbar-hide">
           {menuItems.map((item) => (
             <button
               key={item.id}
@@ -233,16 +237,20 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
           </div>
         </nav>
 
-        <div className="p-6">
+        <div className="p-6 mt-auto">
            <div className="p-4 rounded-3xl bg-slate-50 border border-slate-100 shadow-inner">
-                <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-primary shadow-sm font-bold">
-                        {profile?.name?.charAt(0)}
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 flex items-center justify-center text-primary shadow-sm font-bold overflow-hidden shrink-0">
+                        {currentProfile?.photoURL ? (
+                            <img src={currentProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                            currentProfile?.name?.charAt(0)
+                        )}
                     </div>
                     <div className="flex-1 overflow-hidden">
-                        <p className="text-sm font-bold text-slate-800 truncate">{profile?.name}</p>
+                        <p className="text-sm font-bold text-slate-800 truncate">{currentProfile?.name}</p>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">{profile?.role}</p>
+                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">{currentProfile?.role}</p>
                             <span className="w-0.5 h-0.5 rounded-full bg-slate-300" />
                             <div className="flex items-center gap-1">
                                 {permission === 'granted' ? (

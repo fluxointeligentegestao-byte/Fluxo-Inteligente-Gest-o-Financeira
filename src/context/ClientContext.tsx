@@ -58,6 +58,17 @@ export const ClientProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               id: profile.id,
               name: profile.name || 'Sem nome',
               companyName: profile.companyName || '',
+              photoURL: profile.photoURL || null,
+              email: profile.email || '',
+              phone: profile.phone || '',
+              document: profile.document || '',
+              cep: profile.cep || '',
+              address: profile.address || '',
+              addressNumber: profile.addressNumber || '',
+              complement: profile.complement || '',
+              neighborhood: profile.neighborhood || '',
+              city: profile.city || '',
+              state: profile.state || '',
               planId: planId
             };
           });

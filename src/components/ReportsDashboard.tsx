@@ -686,17 +686,34 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
                         <div className="flex flex-row items-center h-[200px] mt-auto gap-0">
                             <div className="flex-1 h-full min-w-[120px]">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart margin={{ left: 5, right: 5, top: 10, bottom: 10 }}>
+                                    <PieChart margin={{ left: 10, right: 10, top: 10, bottom: 10 }}>
                                         <Pie
                                             data={data.expenseStructure}
                                             cx="50%"
                                             cy="50%"
                                             innerRadius={25}
-                                            outerRadius={42}
+                                            outerRadius={45}
                                             paddingAngle={3}
                                             dataKey="value"
-                                            label={({ percent }) => percent > 0.04 ? `${(percent * 100).toFixed(0)}%` : ''}
-                                            labelLine={{ stroke: '#64748b', strokeWidth: 1 }}
+                                            labelLine={{ stroke: '#cbd5e1', strokeWidth: 1 }}
+                                            label={({ cx, cy, midAngle, innerRadius, outerRadius, value, index, percent }) => {
+                                                const radius = outerRadius + 12;
+                                                const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                                                const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                                                return (
+                                                    <text 
+                                                        x={x} 
+                                                        y={y} 
+                                                        fill="#64748b" 
+                                                        textAnchor={x > cx ? 'start' : 'end'} 
+                                                        dominantBaseline="central" 
+                                                        fontSize="7" 
+                                                        fontWeight="900"
+                                                    >
+                                                        {percent > 0.03 ? `${(percent * 100).toFixed(0)}%` : ''}
+                                                    </text>
+                                                );
+                                            }}
                                             minAngle={5}
                                         >
                                             {data.expenseStructure.map((e, i) => (
@@ -712,9 +729,9 @@ export const ReportsDashboard = ({ clientId, clientName }: { clientId: string; c
                             </div>
                             <div className="flex flex-col justify-center shrink-0 w-48 pr-1">
                                 {data.expenseStructure.slice(0, 8).map((e, i) => (
-                                    <div key={e.name} className="flex items-start gap-2 mb-4 last:mb-0">
+                                    <div key={e.name} className="flex items-start gap-2 mb-5 last:mb-0">
                                         <div className="w-1.5 h-1.5 rounded-full shrink-0 mt-1" style={{ backgroundColor: ['#e11d48', '#f43f5e', '#fb7185', '#fda4af', '#fecdd3', '#0d9488', '#059669', '#10b981'][i % 8] }} />
-                                        <span className="text-[7.2px] font-black text-slate-700 uppercase leading-[1.6]" style={{ whiteSpace: 'normal', wordBreak: 'break-word', display: 'block' }}>
+                                        <span className="text-[6.5px] font-black text-slate-700 uppercase leading-[1.4]" style={{ whiteSpace: 'normal', wordBreak: 'break-word', display: 'block' }}>
                                             {e.name}
                                         </span>
                                     </div>

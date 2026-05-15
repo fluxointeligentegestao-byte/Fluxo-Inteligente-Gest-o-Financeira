@@ -40,6 +40,7 @@ import {
     UserPlus
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useClient } from '../context/ClientContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
@@ -59,34 +60,129 @@ const REPORT_CATEGORIES = [
 
 export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string) => void, onBack?: () => void }) => {
     const { profile, user, isAdmin, plansConfig, updateProfile, updateEmail, updatePassword } = useAuth();
+    const { isPreviewMode, selectedClientId, clients } = useClient();
     const [isSaving, setIsSaving] = useState(false);
     const [isSearchingCep, setIsSearchingCep] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState<'general' | 'security'>('general');
-    const [adminActiveTab, setAdminActiveTab] = useState<'payments' | 'clients' | 'plans' | 'users' | 'company' | 'lgpd'>('payments');
+    const [adminActiveTab, setAdminActiveTab] = useState<'payments' | 'clients' | 'plans' | 'users' | 'company' | 'lgpd'>('clients');
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteData, setInviteData] = useState({ email: '', name: '', plan: 'essencial' });
+    const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
+    const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
+    const [photoZoom, setPhotoZoom] = useState(1);
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const [photoError, setPhotoError] = useState<string | null>(null);
+
+    const compressImage = (base64Str: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.src = base64Str;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 400;
+                const MAX_HEIGHT = 400;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx?.drawImage(img, 0, 0, width, height);
+                // 0.7 quality for a good balance
+                resolve(canvas.toDataURL('image/jpeg', 0.7));
+            };
+            img.onerror = (err) => reject(err);
+        });
+    };
+
+    const handleSavePhoto = async () => {
+        if (!pendingPhoto) return;
+        setIsUploadingPhoto(true);
+        setPhotoError(null);
+        try {
+            const compressed = await compressImage(pendingPhoto);
+            
+            if (isPreviewMode && selectedClientId) {
+                const clientRef = doc(db, 'userProfiles', selectedClientId);
+                await updateDoc(clientRef, {
+                    photoURL: compressed,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                await updateProfile({ photoURL: compressed });
+            }
+            setIsPhotoPreviewOpen(false);
+            setPendingPhoto(null);
+        } catch (err) {
+            console.error('Error saving photo:', err);
+            setPhotoError('Erro ao processar foto. Tente uma imagem diferente.');
+        } finally {
+            setIsUploadingPhoto(false);
+        }
+    };
+
+    const showAdminView = isAdmin && !isPreviewMode;
+    const isActuallyClient = !isAdmin || isPreviewMode;
+    
+    // Get the client being previewed if applicable
+    const previewClient = isPreviewMode ? clients.find(c => c.id === selectedClientId) : null;
+    const effectiveProfile = isPreviewMode ? previewClient : profile;
     
     // Security specific state
     const [securityData, setSecurityData] = useState({
-        email: profile?.email || '',
+        email: effectiveProfile?.email || '',
         newPassword: '',
         confirmPassword: ''
     });
     const [securityStatus, setSecurityStatus] = useState<{type: 'success' | 'error', message: string} | null>(null);
 
     const [formData, setFormData] = useState({
-        name: profile?.name || '',
-        companyName: profile?.companyName || '',
-        phone: profile?.phone || '',
-        document: profile?.document || '',
-        cep: profile?.cep || '',
-        address: profile?.address || '',
-        addressNumber: profile?.addressNumber || '',
-        complement: profile?.complement || '',
-        neighborhood: profile?.neighborhood || '',
-        city: profile?.city || '',
-        state: profile?.state || ''
+        name: effectiveProfile?.name || '',
+        companyName: effectiveProfile?.companyName || '',
+        phone: effectiveProfile?.phone || '',
+        document: effectiveProfile?.document || '',
+        cep: effectiveProfile?.cep || '',
+        address: effectiveProfile?.address || '',
+        addressNumber: effectiveProfile?.addressNumber || '',
+        complement: effectiveProfile?.complement || '',
+        neighborhood: effectiveProfile?.neighborhood || '',
+        city: effectiveProfile?.city || '',
+        state: effectiveProfile?.state || ''
     });
+
+    // Update form when effectiveProfile changes (useful for switching in preview mode)
+    useEffect(() => {
+        if (effectiveProfile) {
+            setFormData({
+                name: effectiveProfile.name || '',
+                companyName: effectiveProfile.companyName || '',
+                phone: effectiveProfile.phone || '',
+                document: effectiveProfile.document || '',
+                cep: effectiveProfile.cep || '',
+                address: effectiveProfile.address || '',
+                addressNumber: effectiveProfile.addressNumber || '',
+                complement: effectiveProfile.complement || '',
+                neighborhood: effectiveProfile.neighborhood || '',
+                city: effectiveProfile.city || '',
+                state: effectiveProfile.state || ''
+            });
+            setSecurityData(prev => ({
+                ...prev,
+                email: effectiveProfile.email || ''
+            }));
+        }
+    }, [effectiveProfile]);
 
     /** 
      * Helper to mask document (CPF or CNPJ)
@@ -211,21 +307,35 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            await updateProfile(formData);
+            if (isPreviewMode && selectedClientId) {
+                const clientRef = doc(db, 'userProfiles', selectedClientId);
+                await updateDoc(clientRef, {
+                    ...formData,
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                await updateProfile(formData);
+            }
         } catch (error) {
             console.error('Error saving profile:', error);
+            handleFirestoreError(error, OperationType.WRITE, isPreviewMode ? `userProfiles/${selectedClientId}` : `userProfiles/${user?.uid}`);
         } finally {
             setIsSaving(false);
         }
     };
 
     const handleSecurityUpdate = async () => {
+        if (isPreviewMode) {
+            setSecurityStatus({ type: 'error', message: 'Alterações de segurança não permitidas em modo de visualização' });
+            return;
+        }
+
         setSecurityStatus(null);
         setIsSaving(true);
         
         try {
             // Email update
-            if (securityData.email !== profile?.email) {
+            if (securityData.email !== effectiveProfile?.email) {
                 await updateEmail(securityData.email);
             }
 
@@ -1809,24 +1919,55 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                         </button>
                     )}
                     <div className="relative group shrink-0">
+                        <input 
+                            type="file"
+                            id="photo-upload"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                
+                                // Limit size to 5MB for selection, we will compress it down before saving
+                                if (file.size > 5000000) {
+                                    alert('A foto é muito grande. Por favor escolha uma foto menor que 5MB.');
+                                    return;
+                                }
+
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                    const base64 = event.target?.result as string;
+                                    setPendingPhoto(base64);
+                                    setIsPhotoPreviewOpen(true);
+                                };
+                                reader.readAsDataURL(file);
+                                // Clear input value to allow selecting same file again
+                                e.target.value = '';
+                            }}
+                        />
                         <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center overflow-hidden border-2 border-white shadow-lg group-hover:bg-slate-200 transition-colors">
-                            {user?.photoURL ? (
-                                <img src={user.photoURL} alt="Avatar" className="w-full h-full object-cover" />
+                            {effectiveProfile?.photoURL ? (
+                                <img src={effectiveProfile.photoURL} alt="Avatar" className="w-full h-full object-cover" />
                             ) : (
-                                <User size={24} className="text-slate-400" />
+                                <div className="w-full h-full bg-slate-50 flex items-center justify-center">
+                                    <User size={24} className="text-slate-300 group-hover:text-primary transition-colors" />
+                                </div>
                             )}
                         </div>
-                        <button className="absolute -bottom-1 -right-1 p-1 bg-primary text-white rounded-lg shadow-lg hover:scale-110 active:scale-95 transition-all">
+                        <button 
+                            onClick={() => document.getElementById('photo-upload')?.click()}
+                            className="absolute -bottom-1 -right-1 p-1.5 bg-primary text-white rounded-lg shadow-lg hover:scale-110 active:scale-95 transition-all cursor-pointer z-10"
+                        >
                             <Camera size={12} />
                         </button>
                     </div>
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2 mb-0.5">
                             <h1 className="text-xl font-black text-slate-900 tracking-tight uppercase truncate">
-                                {isAdmin ? 'Painel de Controle' : 'Meu Perfil'}
+                                {showAdminView ? 'Painel de Controle' : 'Meu Perfil'}
                             </h1>
                             <span className="px-1.5 py-0.5 bg-primary/10 text-primary text-[8px] font-black uppercase tracking-widest rounded-full shrink-0">
-                                {isAdmin ? 'Adm' : 'VIP'}
+                                {showAdminView ? 'Adm' : 'VIP'}
                             </span>
                         </div>
                         <div className="flex items-center gap-4 mt-2">
@@ -1868,13 +2009,13 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                 <div className="lg:col-span-2 space-y-8 min-w-0">
                     {activeSubTab === 'general' ? (
                         <div className="space-y-8">
-                            {isAdmin ? (
+                            {showAdminView ? (
                                 <div className="space-y-8">
                                     {/* Admin Dashboard Tabs */}
                                     <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-hide">
                                         {[
-                                            { id: 'payments', label: 'Pagamentos', icon: TrendingUp },
                                             { id: 'clients', label: 'Clientes', icon: Users },
+                                            { id: 'payments', label: 'Pagamentos', icon: TrendingUp },
                                             { id: 'plans', label: 'Planos', icon: Settings },
                                             { id: 'users', label: 'Acessos', icon: LockIcon },
                                             { id: 'company', label: 'Dados Empresa', icon: Building2 },
@@ -1928,7 +2069,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                 </div>
                             ) : null}
                             
-                            {!isAdmin && (
+                            {!showAdminView && (
                                 <Card className="p-8 space-y-8 rounded-3xl border-slate-100 shadow-xl shadow-slate-200/5 transition-all hover:shadow-slate-200/20">
                                 <div className="flex items-center gap-3">
                                     <div className="w-10 h-10 bg-primary/5 text-primary rounded-xl flex items-center justify-center">
@@ -1955,7 +2096,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                         <input 
                                             type="email" 
                                             disabled
-                                            value={profile?.email || ''}
+                                            value={effectiveProfile?.email || ''}
                                             className="w-full px-5 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium cursor-not-allowed outline-none text-slate-500"
                                         />
                                     </div>
@@ -2186,7 +2327,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                     )}
                     
                     {/* Meus Pagamentos Section (CLIENT ONLY) */}
-                    {!isAdmin && (
+                    {!showAdminView && (
                         <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5 relative overflow-hidden group">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -2343,7 +2484,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
 
                 {/* Right Column: Mini Dashboard */}
                 <div className="space-y-8">
-                    {!isAdmin && (
+                    {!showAdminView && (
                         <Card className="p-8 bg-slate-900 border-none rounded-[2.5rem] overflow-hidden relative shadow-2xl shadow-slate-900/20 group">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 rounded-full blur-[60px] group-hover:scale-125 transition-transform duration-700" />
                             <div className="relative z-10 space-y-6">
@@ -2369,7 +2510,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                         </Card>
                     )}
 
-                    {!isAdmin && (
+                    {!showAdminView && (
                         <Card className="p-8 space-y-6 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
                             <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Atalhos de Suporte</h3>
                             <div className="space-y-3">
@@ -2408,6 +2549,98 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                     </div>
                 </div>
             </div>
+
+            {/* Photo Preview Modal */}
+            <AnimatePresence>
+                {isPhotoPreviewOpen && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => !isUploadingPhoto && setIsPhotoPreviewOpen(false)}
+                            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+                        />
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden p-8"
+                        >
+                            <div className="flex items-center justify-between mb-8">
+                                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Ajustar Foto</h3>
+                                <button 
+                                    onClick={() => setIsPhotoPreviewOpen(false)}
+                                    className="p-2 text-slate-400 hover:bg-slate-50 rounded-xl transition-colors"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="flex flex-col items-center gap-8">
+                                {photoError && (
+                                    <div className="w-full p-4 bg-rose-50 border border-rose-100 rounded-2xl flex items-center gap-3 text-rose-600">
+                                        <AlertCircle size={18} />
+                                        <p className="text-[10px] font-bold uppercase tracking-tight">{photoError}</p>
+                                    </div>
+                                )}
+                                <div className="w-48 h-48 rounded-3xl bg-slate-100 flex items-center justify-center overflow-hidden border-4 border-slate-50 shadow-inner relative">
+                                    <div 
+                                        className="w-full h-full transition-transform duration-200 ease-out"
+                                        style={{ 
+                                            transform: `scale(${photoZoom})`,
+                                        }}
+                                    >
+                                        <img 
+                                            src={pendingPhoto || ''} 
+                                            alt="Preview" 
+                                            className="w-full h-full object-cover"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="w-full space-y-2">
+                                    <div className="flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                        <span>Zoom</span>
+                                        <span>{(photoZoom * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <input 
+                                        type="range"
+                                        min="1"
+                                        max="3"
+                                        step="0.01"
+                                        value={photoZoom}
+                                        onChange={(e) => setPhotoZoom(parseFloat(e.target.value))}
+                                        className="w-full h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-primary"
+                                    />
+                                </div>
+
+                                <div className="flex gap-4 w-full">
+                                    <Button 
+                                        variant="outline"
+                                        className="flex-1 rounded-2xl py-4"
+                                        onClick={() => setIsPhotoPreviewOpen(false)}
+                                        disabled={isUploadingPhoto}
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button 
+                                        className="flex-1 rounded-2xl py-4"
+                                        onClick={handleSavePhoto}
+                                        disabled={isUploadingPhoto}
+                                    >
+                                        {isUploadingPhoto ? (
+                                            <Loader2 size={20} className="animate-spin" />
+                                        ) : (
+                                            'Salvar Foto'
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 };

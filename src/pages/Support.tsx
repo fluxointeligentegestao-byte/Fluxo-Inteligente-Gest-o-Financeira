@@ -32,14 +32,19 @@ interface SupportProps {
 
 export const Support = ({ setActiveTab, onBack }: SupportProps) => {
     const { profile, user, isAdmin } = useAuth();
-    const { selectedClientId, selectedClientName, clients, setSelectedClient } = useClient();
+    const { selectedClientId, selectedClientName, clients, setSelectedClient, isPreviewMode } = useClient();
     const [messages, setMessages] = useState<Message[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const activeChannelId = isAdmin ? selectedClientId : user?.uid;
+    const showAdminView = isAdmin && !isPreviewMode;
+    const activeChannelId = (isAdmin && !isPreviewMode) ? selectedClientId : (isPreviewMode ? selectedClientId : user?.uid);
+    
+    // Get the client being previewed if applicable
+    const previewClient = isPreviewMode ? clients.find(c => c.id === selectedClientId) : null;
+    const effectiveProfile = isPreviewMode ? previewClient : profile;
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,10 +52,10 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
 
     // Ensure a client is selected for admin if none is selected
     useEffect(() => {
-        if (isAdmin && !selectedClientId && clients.length > 0) {
+        if (showAdminView && !selectedClientId && clients.length > 0) {
             setSelectedClient(clients[0].id, clients[0].name);
         }
-    }, [isAdmin, selectedClientId, clients]);
+    }, [showAdminView, selectedClientId, clients]);
 
     useEffect(() => {
         if (!activeChannelId) {
@@ -104,10 +109,10 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
         }
     };
 
-    const activeClientName = isAdmin ? (clients.find(c => c.id === selectedClientId)?.name || 'Cliente') : (profile?.name || 'Cliente');
+    const activeClientName = showAdminView ? (clients.find(c => c.id === selectedClientId)?.name || 'Cliente') : (profile?.name || 'Cliente');
 
     return (
-        <div className="h-[calc(100vh-10rem)] flex flex-col gap-4">
+        <div className="h-[calc(100vh-7rem)] flex flex-col gap-4">
             <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-4">
                     {onBack && (
@@ -121,21 +126,21 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                     <div>
                         <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Atendimento</h1>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                            {isAdmin ? 'Gestão de conversas com clientes' : 'Sua consultoria estratégica em tempo real'}
+                            {showAdminView ? 'Gestão de conversas com clientes' : 'Sua consultoria estratégica em tempo real'}
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-full border border-emerald-100 shadow-sm">
                     <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
                     <span className="text-[9px] font-black uppercase tracking-widest leading-none">
-                        {isAdmin ? 'Você está On-line' : 'Consultor On-line'}
+                        {showAdminView ? 'Você está On-line' : 'Consultor On-line'}
                     </span>
                 </div>
             </div>
 
             <Card className="flex-1 flex overflow-hidden bg-white rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/20">
                 {/* Admin Sidebar */}
-                {isAdmin && (
+                {showAdminView && (
                     <div className="w-64 border-r border-slate-50 flex flex-col bg-slate-50/10">
                         <div className="p-6 border-b border-slate-50">
                             <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Meus Clientes</h3>
@@ -179,10 +184,10 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                             </div>
                             <div>
                                 <h4 className="font-black text-slate-900 uppercase tracking-tight text-xs md:text-base">
-                                    {isAdmin ? (activeClientName || 'Selecione um cliente') : 'Suporte Central'}
+                                    {showAdminView ? (activeClientName || 'Selecione um cliente') : 'Suporte Central'}
                                 </h4>
                                 <p className="text-[8px] md:text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                                    {isAdmin ? 'Canal direto com o cliente' : 'Tempo de resposta: ~5 min'}
+                                    {showAdminView ? 'Canal direto com o cliente' : 'Tempo de resposta: ~5 min'}
                                 </p>
                             </div>
                         </div>
@@ -207,7 +212,7 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                                     <div className="bg-white p-4 md:p-5 rounded-2xl md:rounded-3xl rounded-tl-none border border-slate-100 shadow-sm relative overflow-hidden group">
                                         <div className="absolute top-0 left-0 w-1 h-full bg-primary" />
                                         <p className="text-sm text-slate-600 font-medium leading-relaxed">
-                                            Olá <span className="font-black text-primary uppercase">{isAdmin ? (activeClientName?.split(' ')[0] || 'Cliente') : (profile?.name?.split(' ')[0] || 'Bem-vindo')}</span>! <br />
+                                            Olá <span className="font-black text-primary uppercase">{showAdminView ? (activeClientName?.split(' ')[0] || 'Cliente') : (effectiveProfile?.name?.split(' ')[0] || 'Bem-vindo')}</span>! <br />
                                             Este é o seu canal de comunicação direta. Como podemos ajudar com sua gestão estratégica hoje?
                                         </p>
                                     </div>
@@ -245,7 +250,7 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                     <div className="flex gap-2 md:gap-4 items-end max-w-4xl mx-auto">
                         <div className="flex-1 relative group">
                             <textarea 
-                                rows={1}
+                                rows={2}
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 onKeyDown={(e) => {
@@ -255,7 +260,7 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                                     }
                                 }}
                                 placeholder="Sua mensagem..." 
-                                className="w-full pl-4 md:pl-6 pr-10 md:pr-14 py-3 md:py-4 bg-slate-50 border-transparent rounded-xl md:rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/5 focus:bg-white focus:border-primary/20 outline-none transition-all resize-none min-h-[48px] md:min-h-[56px]"
+                                className="w-full pl-4 md:pl-6 pr-10 md:pr-14 py-3 md:py-4 bg-slate-50 border-transparent rounded-xl md:rounded-2xl text-sm font-medium focus:ring-4 focus:ring-primary/5 focus:bg-white focus:border-primary/20 outline-none transition-all resize-none min-h-[60px] md:min-h-[80px]"
                             />
                             <div className="absolute right-2 md:right-4 bottom-2 md:bottom-3 flex gap-1">
                                 <button className="p-1.5 md:p-2 text-slate-300 hover:text-primary transition-colors cursor-pointer"><Paperclip size={18} /></button>

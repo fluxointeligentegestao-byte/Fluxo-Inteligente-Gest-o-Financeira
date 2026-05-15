@@ -534,293 +534,225 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-primary/20 rounded-full blur-[100px]" />
           <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 bg-secondary/10 rounded-full blur-[80px]" />
           
-          <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-8">
-              <div className="max-w-2xl">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest mb-4 backdrop-blur-md">
-                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                     Sua Gestão em Tempo Real
+          <div className="relative z-10">
+              <div className="max-w-3xl">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[9px] font-black uppercase tracking-widest mb-6 backdrop-blur-md">
+                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                     Sua Evolução Financeira Começa Aqui
                   </div>
-                  <h1 className="text-3xl md:text-5xl font-black tracking-tight mb-3 uppercase leading-[0.9]">
-                      Bem-vindo,<br/>
-                      <span className="text-secondary">{firstName}</span>.
+                  <h1 className="text-4xl md:text-6xl font-black tracking-tight mb-6 uppercase leading-[0.85]">
+                      Que alegria ter você,<br/>
+                      <span className="text-secondary">{firstName}</span>!
                   </h1>
-                  <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed max-w-lg mb-6">
-                      Sua central de relatórios e processos. Organizamos sua rotina financeira para que você foque no crescimento do seu negócio.
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                      <Button 
-                        variant="primary" 
-                        className="rounded-xl px-6 py-5 h-auto bg-white text-slate-900 hover:bg-slate-100 font-black uppercase tracking-widest text-[10px]"
-                        onClick={() => setActiveTab('reports')}
-                      >
-                            Relatórios Recentes <ArrowUpRight size={16} className="ml-2" />
-                      </Button>
+                  <div className="space-y-4 max-w-2xl">
+                      <p className="text-slate-100 text-lg md:text-xl font-bold leading-tight">
+                          Parabéns pela excelente escolha em profissionalizar sua gestão financeira. 
+                      </p>
+                      <p className="text-slate-400 text-sm md:text-base font-medium leading-relaxed">
+                          Sua decisão em contratar nossos serviços é o primeiro grande passo para um futuro de muita organização e prosperidade. 
+                          Estamos aqui para transformar seus números em clareza estratégica, garantindo que seu negócio cresça com solidez, 
+                          inteligência e segurança. Vamos juntos construir sua próxima etapa de sucesso!
+                      </p>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+      {/* Real-time Stats for Client - 3 COLUMNS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
+              <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <ArrowUpCircle size={18} />
+                  </div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Receber (Período)</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToReceive)}</h3>
+          </Card>
+          <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
+              <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+                      <ArrowDownCircle size={18} />
+                  </div>
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Período)</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToPay)}</h3>
+          </Card>
+          <Card className={cn(
+              "p-5 border-none shadow-xl shadow-slate-200/20 group hover:translate-y-[-2px] transition-all",
+              stats.clientBalance >= 0 ? "bg-indigo-600 text-white" : "bg-rose-600 text-white"
+          )}>
+              <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-lg bg-white/10 text-white flex items-center justify-center">
+                      <TrendingUp size={18} />
+                  </div>
+                  <span className="text-[9px] font-black text-white/50 uppercase tracking-widest">Fluxo de Caixa</span>
+              </div>
+              <h3 className="text-xl font-black">{formatCurrency(stats.clientBalance)}</h3>
+          </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          <div className="lg:col-span-2 space-y-6">
+              {/* Bank Balances Section */}
+              <Card className="p-6 border-none shadow-xl shadow-slate-200/20 bg-white flex flex-col">
+                  <div className="flex items-center justify-between mb-6">
+                      <div>
+                          <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Saldos Bancários Conciliados</h3>
+                          <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Dados reais integrados</p>
+                      </div>
                       <Button 
                         variant="ghost" 
-                        className="rounded-xl px-6 py-5 h-auto border border-white/20 text-white hover:bg-white/10 font-black uppercase tracking-widest text-[10px]"
-                        onClick={() => setActiveTab('support')}
+                        size="sm" 
+                        className="text-[9px] font-black uppercase tracking-widest text-primary h-8"
+                        onClick={() => setActiveTab('reconciliation')}
                       >
-                            Consultoria Especializada
+                        Conciliar Novo Extrato
                       </Button>
                   </div>
-              </div>
 
-              <div className="flex flex-col gap-2 shrink-0 md:mb-2">
-                <label className="text-[10px] font-black text-white/40 uppercase tracking-widest px-1">Período de Análise</label>
-                <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-2xl p-3 backdrop-blur-md transition-all hover:bg-white/10">
-                    <Calendar size={18} className="text-secondary" />
-                    <div className="flex items-center gap-3">
-                      <input 
-                          type="date"
-                          value={activeFilters.startDate}
-                          onChange={(e) => setActiveFilters({...activeFilters, startDate: e.target.value})}
-                          className="bg-transparent text-xs font-black text-white uppercase tracking-widest outline-none cursor-pointer p-0"
-                      />
-                      <span className="text-[8px] font-black text-white/20">ATÉ</span>
-                      <input 
-                          type="date"
-                          value={activeFilters.endDate}
-                          onChange={(e) => setActiveFilters({...activeFilters, endDate: e.target.value})}
-                          className="bg-transparent text-xs font-black text-white uppercase tracking-widest outline-none cursor-pointer p-0"
-                      />
-                    </div>
-                </div>
-              </div>
-          </div>
-      </div>
-
-      {/* Real-time Stats for Client */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          <div className="lg:col-span-1 space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                  <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
-                      <div className="flex items-center gap-3 mb-3">
-                          <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                              <ArrowUpCircle size={18} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto max-h-[240px] pr-2 custom-scrollbar">
+                      {banks.length === 0 ? (
+                          <div className="col-span-full py-12 text-center text-slate-300">
+                              <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
+                              <p className="text-[10px] font-black uppercase tracking-widest leading-none">Nenhuma conta cadastrada</p>
                           </div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Receber (Período)</span>
-                      </div>
-                      <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToReceive)}</h3>
-                  </Card>
-                  <Card className="p-5 border-none shadow-xl shadow-slate-200/20 bg-white group hover:translate-y-[-2px] transition-all">
-                      <div className="flex items-center gap-3 mb-3">
-                          <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                              <ArrowDownCircle size={18} />
-                          </div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">A Pagar (Período)</span>
-                      </div>
-                      <h3 className="text-xl font-black text-slate-900">{formatCurrency(stats.clientToPay)}</h3>
-                  </Card>
-                  <Card className={cn(
-                      "p-5 border-none shadow-xl shadow-slate-200/20 group hover:translate-y-[-2px] transition-all",
-                      stats.clientBalance >= 0 ? "bg-slate-900 text-white" : "bg-rose-600 text-white"
-                  )}>
-                      <div className="flex items-center gap-3 mb-3">
-                          <div className="w-8 h-8 rounded-lg bg-white/10 text-white flex items-center justify-center">
-                              <TrendingUp size={18} />
-                          </div>
-                          <span className="text-[9px] font-black text-white/50 uppercase tracking-widest">Fluxo de Caixa</span>
-                      </div>
-                      <h3 className="text-xl font-black">{formatCurrency(stats.clientBalance)}</h3>
-                  </Card>
-              </div>
-          </div>
-
-          <Card className="lg:col-span-3 p-6 border-none shadow-xl shadow-slate-200/20 bg-white flex flex-col h-full">
-              <div className="flex items-center justify-between mb-6">
-                  <div>
-                      <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Saldos Bancários Conciliados</h3>
-                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">Dados reais integrados</p>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="text-[9px] font-black uppercase tracking-widest text-primary h-8"
-                    onClick={() => setActiveTab('reconciliation')}
-                  >
-                    Conciliar Novo Extrato
-                  </Button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
-                  {banks.length === 0 ? (
-                      <div className="col-span-full py-12 text-center text-slate-300">
-                          <AlertCircle size={24} className="mx-auto mb-2 opacity-50" />
-                          <p className="text-[10px] font-black uppercase tracking-widest leading-none">Nenhuma conta cadastrada</p>
-                      </div>
-                  ) : (
-                      banks.map((bank) => (
-                          <div 
-                            key={bank.id}
-                            className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-primary/20 hover:bg-white transition-all group"
-                          >
-                              <div className="flex items-center justify-between mb-3">
-                                  <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-primary shadow-sm group-hover:scale-110 transition-all">
-                                      <CreditCard size={14} />
+                      ) : (
+                          banks.map((bank) => (
+                              <div 
+                                key={bank.id}
+                                className="p-4 bg-slate-50 border border-slate-100 rounded-2xl hover:border-primary/20 hover:bg-white transition-all group"
+                              >
+                                  <div className="flex items-center justify-between mb-3">
+                                      <div className="w-8 h-8 rounded-lg bg-white border border-slate-100 flex items-center justify-center text-primary shadow-sm group-hover:scale-110 transition-all">
+                                          <CreditCard size={14} />
+                                      </div>
+                                      <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest transition-colors group-hover:text-primary/50">Disponível</span>
                                   </div>
-                                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest transition-colors group-hover:text-primary/50">Disponível</span>
-                              </div>
-                              <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate mb-1">
-                                  {bank.name}
-                              </h4>
-                              <p className="text-lg font-black text-slate-900 mb-2">
-                                  {formatCurrency(bank.balance || 0)}
-                              </p>
-                              <div className="flex items-center gap-4 pt-3 border-t border-slate-100/50">
-                                  <div className="flex flex-col">
-                                      <span className="text-[7px] font-black text-emerald-500 uppercase tracking-widest">Entradas</span>
-                                      <span className="text-[9px] font-bold text-slate-700">
-                                          {formatCurrency(bankMovements[bank.id]?.in || 0)}
-                                      </span>
-                                  </div>
-                                  <div className="flex flex-col">
-                                      <span className="text-[7px] font-black text-rose-500 uppercase tracking-widest">Saídas</span>
-                                      <span className="text-[9px] font-bold text-slate-700">
-                                          {formatCurrency(bankMovements[bank.id]?.out || 0)}
-                                      </span>
+                                  <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate mb-1">
+                                      {bank.name}
+                                  </h4>
+                                  <p className="text-lg font-black text-slate-900 mb-2">
+                                      {formatCurrency(bank.balance || 0)}
+                                  </p>
+                                  <div className="flex items-center gap-4 pt-3 border-t border-slate-100/50">
+                                      <div className="flex flex-col">
+                                          <span className="text-[7px] font-black text-emerald-500 uppercase tracking-widest">Entradas</span>
+                                          <span className="text-[9px] font-bold text-slate-700">
+                                              {formatCurrency(bankMovements[bank.id]?.in || 0)}
+                                          </span>
+                                      </div>
+                                      <div className="flex flex-col">
+                                          <span className="text-[7px] font-black text-rose-500 uppercase tracking-widest">Saídas</span>
+                                          <span className="text-[9px] font-bold text-slate-700">
+                                              {formatCurrency(bankMovements[bank.id]?.out || 0)}
+                                          </span>
+                                      </div>
                                   </div>
                               </div>
-                          </div>
-                      ))
-                  )}
-              </div>
-          </Card>
-      </div>
-
-      {/* Services Grid (The "Cards com Serviços" requested) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {[
-            { id: 'reports', name: 'Relatórios Gerenciais', desc: 'BI e Análises', icon: FileText, color: 'text-primary bg-primary/5' },
-            { id: 'documents', name: 'Documentos', desc: 'Notas e extratos', icon: Upload, color: 'text-amber-500 bg-amber-50' },
-            { id: 'plans', name: 'Planos', desc: 'Escopo BPO', icon: CreditCard, color: 'text-emerald-500 bg-emerald-50' },
-            { id: 'support', name: 'Consultoria', desc: 'Suporte à decisão', icon: MessageSquare, color: 'text-secondary bg-secondary/5' },
-          ].map((service, idx) => (
-            <motion.div
-                key={service.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-            >
-                <Card 
-                    onClick={() => setActiveTab(service.id)}
-                    className="group p-4 bg-white border-slate-100 hover:border-primary/20 hover:shadow-lg transition-all cursor-pointer rounded-2xl flex flex-col items-start gap-4"
-                >
-                    <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center transition-all group-hover:scale-110", service.color)}>
-                        <service.icon size={18} />
-                    </div>
-                    <div>
-                        <h3 className="text-xs font-black text-slate-900 uppercase tracking-tight leading-none mb-1">{service.name}</h3>
-                        <p className="text-[9px] text-slate-400 font-medium italic">{service.desc}</p>
-                    </div>
-                    
-                    <div className="w-full pt-3 mt-auto border-t border-slate-50 flex items-center justify-between">
-                         <span className="text-[7px] font-black text-slate-300 uppercase tracking-widest">Acessar</span>
-                         <ChevronRight size={12} className="text-slate-300 group-hover:text-primary transition-colors" />
-                    </div>
-                </Card>
-            </motion.div>
-          ))}
-      </div>
-
-      {/* Quick Summary Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2 p-6 bg-white border-slate-100 shadow-xl shadow-slate-200/10 rounded-3xl overflow-hidden relative group">
-              <div className="flex items-center justify-between mb-8">
-                  <div>
-                      <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Performance Financeira</h3>
-                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Visão geral do faturamento vs despesas</p>
+                          ))
+                      )}
                   </div>
-                  <div className="px-4 py-1.5 bg-slate-50 rounded-xl border border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                      Evolução do Período
-                  </div>
-              </div>
-              
-              <div className="h-[240px] w-full relative">
-                {!hasDashboardAccess && (
-                    <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-center p-6 animate-in fade-in duration-500">
-                        <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-4 shadow-inner">
-                            <Lock size={20} />
-                        </div>
-                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-2">Dashboard Premium</h4>
-                        <p className="text-[10px] text-slate-400 font-medium max-w-[200px] leading-relaxed uppercase tracking-wider">
-                            Este gráfico e as análises BI fazem parte do plano <span className="text-primary font-black">Consultoria</span>. 
-                            Upgrade seu pacote para visualizar sua performance detalhada!
-                        </p>
-                        <Button 
-                            variant="primary" 
-                            size="sm" 
-                            className="mt-6 rounded-xl text-[9px] px-6 h-9"
-                            onClick={() => setActiveTab('plans')}
-                        >
-                            Ver Planos Disponíveis
-                        </Button>
-                    </div>
-                )}
-                <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                        <XAxis 
-                            dataKey="name" 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 'bold' }} 
-                            dy={10}
-                        />
-                        <YAxis 
-                            axisLine={false} 
-                            tickLine={false} 
-                            tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 'bold' }} 
-                        />
-                        <Tooltip 
-                            cursor={{ fill: '#f8fafc' }}
-                            contentStyle={{ 
-                                borderRadius: '16px', 
-                                border: 'none', 
-                                boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                                fontSize: '10px',
-                                fontWeight: 'bold'
-                            }} 
-                        />
-                        <Bar dataKey="receita" fill="#004b8d" radius={[4, 4, 0, 0]} barSize={24} />
-                    </BarChart>
-                </ResponsiveContainer>
-              </div>
-          </Card>
+              </Card>
 
-          <Card className="p-6 bg-slate-50 border-white shadow-xl shadow-slate-200/10 rounded-3xl flex flex-col justify-between group overflow-hidden relative">
-              <div className="absolute top-0 right-0 -mr-6 -mt-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-hover:bg-primary/10 transition-all" />
-              
-              <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">📅 Minha Agenda de Contas</h3>
-                    <button 
-                        onClick={() => setActiveTab('agenda')}
-                        className="text-[9px] font-black text-primary uppercase tracking-widest hover:underline"
-                    >
-                        Ver Tudo
-                    </button>
+              {/* Performance Financeira card (Moved below bank balances) */}
+              <Card className="p-6 bg-white border-none shadow-xl shadow-slate-200/20 rounded-3xl overflow-hidden relative group">
+                  <div className="flex items-center justify-between mb-8">
+                      <div>
+                          <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Performance Financeira</h3>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Visão geral do faturamento vs despesas</p>
+                      </div>
+                      <div className="px-4 py-1.5 bg-slate-50 rounded-xl border border-slate-100 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                          Evolução do Período
+                      </div>
                   </div>
-                  <div className="space-y-3">
-                      {notices.map((step, i) => (
-                        <div 
-                            key={i} 
-                            onClick={() => setActiveTab(step.action as any)}
-                            className="flex items-center gap-3 p-3 bg-white rounded-xl shadow-sm border border-slate-100 hover:translate-x-1 transition-all cursor-pointer group/item"
-                        >
-                            <div className={cn(
-                                "w-1.5 h-8 rounded-full",
-                                step.type === 'urgent' ? 'bg-rose-500' : step.type === 'warning' ? 'bg-amber-500' : 'bg-primary'
-                            )} />
-                            <div>
-                                <p className="text-xs font-bold text-slate-800 tracking-tight leading-none mb-1">{step.title}</p>
-                                <p className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{step.time}</p>
+                  
+                  <div className="h-[300px] w-full relative">
+                    {!hasDashboardAccess && (
+                        <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-center p-6 animate-in fade-in duration-500">
+                            <div className="w-12 h-12 bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-4 shadow-inner">
+                                <Lock size={20} />
                             </div>
+                            <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight mb-2">Dashboard Premium</h4>
+                            <p className="text-[10px] text-slate-400 font-medium max-w-[200px] leading-relaxed uppercase tracking-wider">
+                                Este gráfico e as análises BI fazem parte do plano <span className="text-primary font-black">Consultoria</span>. 
+                                Upgrade seu pacote para visualizar sua performance detalhada!
+                            </p>
+                            <Button 
+                                variant="primary" 
+                                size="sm" 
+                                className="mt-6 rounded-xl text-[9px] px-6 h-9"
+                                onClick={() => setActiveTab('plans')}
+                            >
+                                Ver Planos Disponíveis
+                            </Button>
                         </div>
-                      ))}
+                    )}
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis 
+                                dataKey="name" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 'bold' }} 
+                                dy={10}
+                            />
+                            <YAxis 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fontSize: 9, fill: '#94a3b8', fontWeight: 'bold' }} 
+                            />
+                            <Tooltip 
+                                cursor={{ fill: '#f8fafc' }}
+                                contentStyle={{ 
+                                    borderRadius: '16px', 
+                                    border: 'none', 
+                                    boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold'
+                                }} 
+                            />
+                            <Bar dataKey="receita" fill="#004b8d" radius={[4, 4, 0, 0]} barSize={24} />
+                        </BarChart>
+                    </ResponsiveContainer>
                   </div>
+              </Card>
+          </div>
+
+          <div className="space-y-6">
+              {/* Services Grid (Inlined for better layout or kept separate) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { id: 'reports', name: 'Relatórios Gerenciais', desc: 'BI e Análises', icon: FileText, color: 'text-primary bg-primary/5' },
+                    { id: 'documents', name: 'Documentos', desc: 'Notas e extratos', icon: Upload, color: 'text-amber-500 bg-amber-50' },
+                    { id: 'plans', name: 'Planos', desc: 'Escopo BPO', icon: CreditCard, color: 'text-emerald-500 bg-emerald-50' },
+                    { id: 'support', name: 'Consultoria', desc: 'Suporte à decisão', icon: MessageSquare, color: 'text-secondary bg-secondary/5' },
+                  ].map((service, idx) => (
+                    <motion.div
+                        key={service.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.1 }}
+                    >
+                        <Card 
+                            onClick={() => setActiveTab(service.id)}
+                            className="group p-4 bg-white border-none shadow-lg shadow-slate-200/10 hover:border-primary/20 hover:shadow-xl transition-all cursor-pointer rounded-2xl flex flex-col items-start gap-4"
+                        >
+                            <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center transition-all group-hover:scale-110", service.color)}>
+                                <service.icon size={18} />
+                            </div>
+                            <div>
+                                <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-tight leading-none mb-1">{service.name}</h3>
+                                <p className="text-[8px] text-slate-400 font-medium italic">{service.desc}</p>
+                            </div>
+                        </Card>
+                    </motion.div>
+                  ))}
               </div>
 
-              <div className="mt-8 p-5 bg-primary rounded-2xl text-white">
+              {/* Help box */}
+              <div className="p-5 bg-primary rounded-2xl text-white shadow-xl shadow-primary/20">
                   <p className="text-[9px] font-black uppercase tracking-widest text-white/60 mb-1.5">Ajuda</p>
                   <p className="text-xs font-bold mb-3 leading-snug">Alguma dúvida sobre os números?</p>
                   <Button 
@@ -831,7 +763,7 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
                       Abrir Chat de Suporte
                   </Button>
               </div>
-          </Card>
+          </div>
       </div>
     </div>
   );

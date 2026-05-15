@@ -18,6 +18,7 @@ export interface UserProfile {
   city?: string;
   state?: string;
   createdAt: any;
+  photoURL?: string;
 }
 
 export interface Payment {

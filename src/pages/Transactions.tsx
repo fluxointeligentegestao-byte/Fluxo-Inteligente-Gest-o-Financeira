@@ -58,7 +58,6 @@ interface TransactionsProps {
 
 interface FinancialTransaction {
     id: string;
-    docNumber: string;
     nfNumber: string;
     type: 'receita' | 'despesa';
     partnerName: string;
@@ -88,7 +87,7 @@ interface FinancialTransaction {
 
 export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
     const { profile, user, isAdmin, loading: authLoading } = useAuth();
-    const { selectedClientId, selectedClientName } = useClient();
+    const { selectedClientId, selectedClientName, clients, setSelectedClient } = useClient();
     
     const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
     const [accounts, setAccounts] = useState<any[]>([]);
@@ -102,6 +101,8 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
     const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
     const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [filters, setFilters] = useState({
         type: 'todos',
         partner: 'todos',
@@ -165,7 +166,6 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         dueDate: new Date().toISOString().substring(0, 10),
         installment: '1/1',
         originalValue: 0,
-        docNumber: 'GERADO AUTOMATICAMENTE',
         nfNumber: '',
         partnerName: '',
         partnerTaxId: '',
@@ -253,30 +253,6 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         };
     }, [selectedClientId]);
 
-    const generateNextDocNumber = async (type: 'receita' | 'despesa'): Promise<string> => {
-        if (!selectedClientId) return 'ERR-000';
-        const prefix = type === 'receita' ? 'R' : 'P';
-        const counterRef = doc(db, 'clients', selectedClientId, 'counters', `transaction_${prefix}`);
-        
-        try {
-            const nextNum = await runTransaction(db, async (transaction) => {
-                const counterDoc = await transaction.get(counterRef);
-                let current = 0;
-                if (counterDoc.exists()) {
-                    current = counterDoc.data().lastNumber || 0;
-                }
-                const next = current + 1;
-                transaction.set(counterRef, { lastNumber: next }, { merge: true });
-                return next;
-            });
-            
-            return `${prefix}-${nextNum.toString().padStart(4, '0')}`;
-        } catch (error) {
-            console.error("Error generating number:", error);
-            return `${prefix}-????`;
-        }
-    };
-
     // Reset invalid account when type changes or update category code
     useEffect(() => {
         if (effectiveAccounts.length > 0) {
@@ -324,12 +300,10 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                     updatedAt: serverTimestamp()
                 });
             } else {
-                const nextDocNumber = await generateNextDocNumber(formData.type as 'receita' | 'despesa');
                 await addDoc(collection(db, 'transactions'), {
                     ...formData,
                     clientId: selectedClientId,
                     clientName: selectedClientName,
-                    docNumber: nextDocNumber,
                     createdAt: serverTimestamp()
                 });
             }
@@ -470,7 +444,6 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             dueDate: new Date().toISOString().substring(0, 10),
             installment: '1/1',
             originalValue: 0,
-            docNumber: '',
             nfNumber: '',
             partnerName: '',
             partnerTaxId: '',
@@ -502,7 +475,6 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.partnerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.nfNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.docNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             acc?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             acc?.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             cc?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -518,7 +490,9 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         const matchesDueDate = filters.dueDate === 'todos' || t.dueDate === filters.dueDate;
         const matchesValue = filters.value === 'todos' || t.originalValue.toString() === filters.value;
 
-        return matchesSearch && matchesType && matchesPartner && matchesCategory && matchesStatus && matchesDueDate && matchesValue;
+        const matchesDateRange = (!startDate || t.dueDate >= startDate) && (!endDate || t.dueDate <= endDate);
+
+        return matchesSearch && matchesType && matchesPartner && matchesCategory && matchesStatus && matchesDueDate && matchesValue && matchesDateRange;
     }).sort((a, b) => {
         let aValue: any;
         let bValue: any;
@@ -561,18 +535,32 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         <div className="space-y-6 pb-12">
             <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
-                    {onBack && (
-                        <button 
-                            onClick={onBack}
-                            className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
-                        >
-                            <ChevronLeft size={24} />
-                        </button>
-                    )}
                     <div>
-                        <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
-                            {isAdmin ? `Lançamentos: ${selectedClientName || 'Nenhum Cliente Selecionado'}` : 'Gestão de Lançamentos'}
-                        </h1>
+                        <div className="flex flex-col md:flex-row md:items-center gap-3">
+                            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+                                {isAdmin ? 'Controle de Lançamentos' : 'Gestão de Lançamentos'}
+                            </h1>
+                            {isAdmin && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 border border-primary/10 rounded-xl ml-2">
+                                    <User size={12} className="text-primary" />
+                                    <select 
+                                        value={selectedClientId || ''}
+                                        onChange={(e) => {
+                                            const client = clients.find(c => c.id === e.target.value);
+                                            setSelectedClient(e.target.value || null, client?.name || null);
+                                        }}
+                                        className="bg-transparent border-none text-[10px] font-black text-primary uppercase focus:ring-0 outline-none cursor-pointer pr-4 min-w-[200px]"
+                                    >
+                                        <option value="" className="text-slate-900">Selecionar Cliente...</option>
+                                        {clients.map(c => (
+                                            <option key={c.id} value={c.id} className="text-slate-900">
+                                                {c.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                        </div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Controle de Contas a Pagar e Receber</p>
                     </div>
                 </div>
@@ -592,16 +580,9 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                         <User size={32} />
                     </div>
                     <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Nenhum Cliente Selecionado</h3>
-                    <p className="text-slate-400 text-xs font-medium max-w-xs mx-auto mt-2">
-                        Selecione um cliente no Monitor Geral para gerenciar seus lançamentos financeiros.
+                    <p className="text-slate-400 text-xs font-medium max-w-xs mx-auto mt-2 pb-8">
+                        Selecione um cliente no topo da página para gerenciar seus lançamentos financeiros.
                     </p>
-                    <Button 
-                        variant="primary" 
-                        className="mt-8 rounded-xl px-8 py-3 text-[11px] font-black uppercase tracking-widest"
-                        onClick={() => setActiveTab('dashboard')}
-                    >
-                        Ir para Monitor Geral
-                    </Button>
                 </Card>
             )}
 
@@ -625,23 +606,50 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
             <Card className="p-0 border-none shadow-xl shadow-slate-200/20 overflow-hidden bg-white">
                 <div className="p-6 border-b border-slate-50 space-y-6">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="relative flex-1 max-w-md">
-                            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                            <input 
-                                type="text" 
-                                placeholder="Buscar por descrição ou documento..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none border border-transparent focus:border-primary/20 transition-all"
-                            />
+                        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 flex-1">
+                            <div className="relative flex-1 max-w-md">
+                                <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Buscar por descrição..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none border border-transparent focus:border-primary/20 transition-all"
+                                />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">De</span>
+                                    <input 
+                                        type="date" 
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}
+                                        className="bg-transparent border-none text-[10px] font-black text-slate-700 uppercase focus:ring-0 outline-none cursor-pointer"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none">Até</span>
+                                    <input 
+                                        type="date" 
+                                        value={endDate}
+                                        onChange={(e) => setEndDate(e.target.value)}
+                                        className="bg-transparent border-none text-[10px] font-black text-slate-700 uppercase focus:ring-0 outline-none cursor-pointer"
+                                    />
+                                </div>
+                            </div>
                         </div>
                         <div className="flex items-center gap-2">
                             <Button 
                                 variant="outline" 
-                                onClick={() => setFilters({ type: 'todos', partner: 'todos', category: 'todos', status: 'todos', dueDate: 'todos', value: 'todos' })}
+                                onClick={() => {
+                                    setSearchTerm('');
+                                    setStartDate('');
+                                    setEndDate('');
+                                    setFilters({ type: 'todos', partner: 'todos', category: 'todos', status: 'todos', dueDate: 'todos', value: 'todos' });
+                                }}
                                 className="rounded-xl px-4 py-2.5 text-[10px] font-black uppercase tracking-widest bg-white border-slate-100 text-slate-400 hover:text-primary"
                             >
-                                Limpar Todos os Filtros
+                                Limpar Tudo
                             </Button>
                         </div>
                     </div>
@@ -821,9 +829,6 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                     <td className="px-6 py-4">
                                         <div className="flex flex-col">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded border border-slate-200">
-                                                    {t.docNumber || '----'}
-                                                </span>
                                                 <span className="text-xs font-black text-slate-800 uppercase">{t.partnerName || 'N/A'}</span>
                                             </div>
                                             <span className="text-[10px] font-bold text-slate-400">{t.description || 'Sem descrição'}</span>
@@ -1027,12 +1032,6 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
                                             onChange={(e) => setFormData({...formData, nfNumber: e.target.value})}
                                             className="w-full px-4 py-3 bg-slate-50 rounded-xl text-xs font-bold text-slate-700 outline-none border border-transparent focus:border-primary/20"
                                         />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nº Documento Interno</label>
-                                        <div className="w-full px-4 py-3 bg-slate-100 rounded-xl text-xs font-black text-slate-400 border border-slate-200">
-                                            {selectedTransaction ? formData.docNumber : 'GERADO NA CONFIRMAÇÃO'}
-                                        </div>
                                     </div>
                                 </div>
 
