@@ -147,7 +147,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
 
   const isBlocked = !isAdmin && profile?.isBlocked;
 
-  if (isBlocked) {
+  if (isBlocked && activeTab !== 'profile') {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 text-center">
         <div className="max-w-md space-y-8 animate-in fade-in zoom-in duration-500">

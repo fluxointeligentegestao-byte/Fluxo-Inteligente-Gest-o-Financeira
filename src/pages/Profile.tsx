@@ -31,6 +31,9 @@ import {
     Info, 
     LockIcon, 
     UnlockIcon, 
+    Share2, 
+    Copy,
+    Check,
     Globe,
     FileText,
     Upload,
@@ -47,7 +50,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatCurrency } from '../lib/utils';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, where, getDocs, setDoc, doc, serverTimestamp, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
-import { sendPasswordResetEmail } from 'firebase/auth';
 
 const REPORT_CATEGORIES = [
     '📅 Minha Agenda de Contas',
@@ -59,7 +61,7 @@ const REPORT_CATEGORIES = [
 ];
 
 export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string) => void, onBack?: () => void }) => {
-    const { profile, user, isAdmin, plansConfig, updateProfile, updateEmail, updatePassword } = useAuth();
+    const { profile, user, isAdmin, plansConfig, updateProfile, updateEmail, updatePassword, sendPasswordResetEmail } = useAuth();
     const { isPreviewMode, selectedClientId, clients } = useClient();
     const [isSaving, setIsSaving] = useState(false);
     const [isSearchingCep, setIsSearchingCep] = useState(false);
@@ -1501,12 +1503,30 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
 
         const handleResetPassword = async (email: string) => {
             try {
-                auth.languageCode = 'pt-br';
-                await sendPasswordResetEmail(auth, email);
+                await sendPasswordResetEmail(email);
                 alert(`Um link de redefinição de senha foi enviado para ${email}. Por favor, peça ao cliente para verificar a caixa de entrada e a pasta de SPAM.`);
             } catch (error: any) {
                 console.error("Error sending reset email:", error);
-                alert(`Erro ao enviar e-mail: ${error.message}`);
+                alert(error.message || `Erro ao enviar e-mail de redefinição.`);
+            }
+        };
+
+        const handleShareApp = () => {
+            const url = window.location.origin;
+            const text = `Olá! Comece a usar nossa plataforma Fluxo Inteligente para gestão financeira. Acesse: ${url}`;
+            
+            if (navigator.share) {
+                navigator.share({
+                    title: 'Fluxo Inteligente',
+                    text: text,
+                    url: url,
+                }).catch(() => {
+                    navigator.clipboard.writeText(url);
+                    alert("Link do aplicativo copiado!");
+                });
+            } else {
+                navigator.clipboard.writeText(url);
+                alert("Link do aplicativo copiado para a área de transferência!");
             }
         };
 
@@ -1552,6 +1572,14 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                         </div>
                     </div>
                     <div className="flex items-center gap-3 w-full md:w-auto">
+                        <Button 
+                            type="button"
+                            onClick={handleShareApp}
+                            variant="ghost"
+                            className="bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest h-10 hover:bg-emerald-100"
+                        >
+                            <Share2 size={14} className="mr-2" /> Compartilhar Link
+                        </Button>
                         <div className="relative flex-1 md:w-64">
                             <input 
                                 type="text"
@@ -1912,8 +1940,13 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                 <div className="flex items-center gap-4 max-w-full overflow-hidden">
                     {onBack && (
                         <button 
-                            onClick={onBack}
-                            className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all"
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onBack();
+                            }}
+                            className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all relative z-[60]"
                         >
                             <ChevronLeft size={24} />
                         </button>

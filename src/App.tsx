@@ -21,8 +21,10 @@ function AppContent() {
   const [prevTab, setPrevTab] = React.useState('dashboard');
 
   const handleTabChange = (newTab: string) => {
-    setPrevTab(activeTab);
-    setActiveTab(newTab);
+    if (newTab !== activeTab) {
+      setPrevTab(activeTab);
+      setActiveTab(newTab);
+    }
   };
 
   if (loading) return (
@@ -38,7 +40,7 @@ function AppContent() {
 
   return (
     <Layout activeTab={activeTab} setActiveTab={handleTabChange}>
-      {activeTab === 'profile' && <Profile setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}
+      {activeTab === 'profile' && <Profile setActiveTab={handleTabChange} onBack={() => handleTabChange('dashboard')} />}
       {activeTab === 'dashboard' && <Dashboard setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}
       {activeTab === 'reports' && <Reports setActiveTab={handleTabChange} />}
       {activeTab === 'clients' && <Clients setActiveTab={handleTabChange} onBack={() => handleTabChange(prevTab)} />}

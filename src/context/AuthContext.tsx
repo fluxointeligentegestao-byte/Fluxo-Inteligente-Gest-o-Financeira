@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, signInWithEmailAndPassword } from 'firebase/auth';
+import { onAuthStateChanged, User, GoogleAuthProvider, signInWithPopup, signOut as fbSignOut, signInWithEmailAndPassword, sendPasswordResetEmail as fbSendPasswordResetEmail, updateEmail as fbUpdateEmail, updatePassword as fbUpdatePassword } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserProfile } from '../types';
@@ -15,6 +15,7 @@ interface AuthContextType {
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   updateEmail: (email: string) => Promise<void>;
   updatePassword: (password: string) => Promise<void>;
+  sendPasswordResetEmail: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -156,7 +157,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateEmail = async (newEmail: string) => {
-    const { updateEmail: fbUpdateEmail } = await import('firebase/auth');
     if (!auth.currentUser) return;
     try {
       await fbUpdateEmail(auth.currentUser, newEmail);
@@ -168,12 +168,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updatePassword = async (newPassword: string) => {
-    const { updatePassword: fbUpdatePassword } = await import('firebase/auth');
     if (!auth.currentUser) return;
     try {
       await fbUpdatePassword(auth.currentUser, newPassword);
     } catch (error) {
       console.error('Update password error:', error);
+      throw error;
+    }
+  };
+
+  const sendPasswordResetEmail = async (email: string) => {
+    try {
+      auth.languageCode = 'pt-BR';
+      await fbSendPasswordResetEmail(auth, email);
+    } catch (error: any) {
+      console.error('Send password reset email error:', error.code, error.message);
+      
+      // Handle network errors specifically with more context
+      if (error.code === 'auth/network-request-failed') {
+        throw new Error('Falha na conexão. Verifique sua internet ou tente novamente em alguns instantes.');
+      }
+      
+      if (error.code === 'auth/user-not-found') {
+        throw new Error('Este e-mail não está cadastrado em nossa base.');
+      }
+
+      if (error.code === 'auth/invalid-email') {
+        throw new Error('O e-mail digitado é inválido.');
+      }
+      
       throw error;
     }
   };
@@ -189,7 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = profile?.role === 'admin' || user?.email?.toLowerCase() === 'fluxointeligente.gestao@gmail.com'.toLowerCase();
 
   return (
-    <AuthContext.Provider value={{ user, profile, isAdmin, plansConfig, loading, signInWithGoogle, signInWithEmail, updateProfile, updateEmail, updatePassword, signOut }}>
+    <AuthContext.Provider value={{ user, profile, isAdmin, plansConfig, loading, signInWithGoogle, signInWithEmail, updateProfile, updateEmail, updatePassword, sendPasswordResetEmail, signOut }}>
       {children}
     </AuthContext.Provider>
   );
