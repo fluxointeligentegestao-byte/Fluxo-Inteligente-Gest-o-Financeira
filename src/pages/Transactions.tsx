@@ -51,6 +51,7 @@ import { cn, formatCurrency } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChartAccount, CostCenter, UNIVERSAL_CHART_OF_ACCOUNTS, UNIVERSAL_COST_CENTERS, UNIVERSAL_PAYMENT_METHODS } from '../constants/financial';
 import { useClient } from '../context/ClientContext';
+import { PLAN_CONFIG, normalizePlan } from '../lib/planUtils';
 
 interface TransactionsProps {
     setActiveTab: (tab: string) => void;
@@ -297,13 +298,15 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         try {
             // Check plan limits for creation
             if (!isAdmin && !selectedTransaction) {
-                const planKey = profile?.planId || 'essencial';
+                const planKey = normalizePlan(profile?.planId);
                 const config = Array.isArray(plansConfig) 
                     ? plansConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === planKey)
                     : (plansConfig ? plansConfig[planKey] : null);
                 
-                // Fallback to defaults based on plan key if config from DB is missing or legacy
-                const limit = config?.entriesLimit ?? (planKey === 'essencial' ? 50 : planKey === 'profissional' ? 150 : 0);
+                // Use profile.entriesLimit if defined (custom limit), otherwise fallback to config/plan default
+                const limit = (profile?.entriesLimit && profile.entriesLimit > 0)
+                    ? profile.entriesLimit
+                    : (config?.entriesLimit ?? PLAN_CONFIG[planKey].entriesLimit);
                 
                 if (limit > 0) {
                     const q = query(

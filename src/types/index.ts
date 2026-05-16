@@ -19,6 +19,8 @@ export interface UserProfile {
   state?: string;
   createdAt: any;
   photoURL?: string;
+  entriesLimit?: number;
+  customReports?: string[];
 }
 
 export interface Payment {

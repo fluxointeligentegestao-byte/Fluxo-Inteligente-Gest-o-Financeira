@@ -48,6 +48,7 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, formatCurrency } from '../lib/utils';
+import { normalizeString } from '../lib/planUtils';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, query, where, getDocs, setDoc, doc, serverTimestamp, onSnapshot, updateDoc, getDoc } from 'firebase/firestore';
 
@@ -873,8 +874,10 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
         const [email, setEmail] = useState('');
         const [phone, setPhone] = useState('');
         const [planId, setPlanId] = useState('essencial');
+        const [entriesLimit, setEntriesLimit] = useState<number>(0);
         const [selectedClient, setSelectedClient] = useState<any | null>(null);
         const [currentCategory, setCurrentCategory] = useState<string | null>(null);
+        const [clientSubTab, setClientSubTab] = useState<'reports' | 'config'>('reports');
 
         // Form states (Report)
         const [reportTitle, setReportTitle] = useState('');
@@ -957,6 +960,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                 email,
                 phone,
                 planId,
+                entriesLimit: entriesLimit > 0 ? entriesLimit : null,
                 role: 'client',
                 status: 'Ativo',
                 createdAt: serverTimestamp(),
@@ -1042,6 +1046,26 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             c.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
         );
 
+        const handleUpdateClientConfig = async () => {
+            if (!selectedClient) return;
+            setSaving(true);
+            try {
+                const clientRef = doc(db, 'userProfiles', selectedClient.id);
+                const updates = {
+                    planId: selectedClient.planId,
+                    entriesLimit: selectedClient.entriesLimit || null,
+                    updatedAt: serverTimestamp()
+                };
+                await updateDoc(clientRef, updates);
+                alert("Configurações do cliente atualizadas!");
+            } catch (error) {
+                console.error("Error updating client:", error);
+                alert("Erro ao atualizar cliente.");
+            } finally {
+                setSaving(false);
+            }
+        };
+
         if (selectedClient) {
             const filteredReports = reports.filter(r => {
                 if (!currentCategory || currentCategory === 'Tudo') return true;
@@ -1069,144 +1093,224 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                         </div>
                     </div>
 
+                    {/* Subtabs for Client View */}
+                    <div className="flex items-center gap-4 border-b border-slate-50">
+                        <button 
+                            onClick={() => setClientSubTab('reports')}
+                            className={cn(
+                                "text-[10px] font-black uppercase tracking-widest pb-3 transition-all border-b-2",
+                                clientSubTab === 'reports' ? "text-primary border-primary" : "text-slate-400 border-transparent hover:text-slate-600"
+                            )}
+                        >
+                            Relatórios e Arquivos
+                        </button>
+                        <button 
+                            onClick={() => setClientSubTab('config')}
+                            className={cn(
+                                "text-[10px] font-black uppercase tracking-widest pb-3 transition-all border-b-2",
+                                clientSubTab === 'config' ? "text-primary border-primary" : "text-slate-400 border-transparent hover:text-slate-600"
+                            )}
+                        >
+                            Configurações do Plano
+                        </button>
+                    </div>
+
                     <div className="space-y-8">
-                        {!currentCategory ? (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Pastas de Relatórios</h3>
-                                    <Button 
-                                        onClick={() => setIsReportModalOpen(true)}
-                                        className="bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-slate-900/10"
-                                    >
-                                        <Plus size={16} className="mr-2" /> Novo Documento
-                                    </Button>
-                                </div>
-                                
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    {REPORT_CATEGORIES.map((cat) => {
-                                        const categoryReports = reports.filter(r => {
-                                            const reportCat = (r.category || '').toLowerCase().trim();
-                                            const folderCat = cat.toLowerCase().trim();
-                                            return reportCat === folderCat || reportCat.includes(folderCat) || folderCat.includes(reportCat);
-                                        });
-                                        const colors = CATEGORY_COLORS[cat] || { bgColor: 'bg-white', borderColor: 'border-slate-100', textColor: 'text-slate-900', iconBg: 'bg-slate-50', iconColor: 'text-slate-400' };
-
-                                        return (
-                                            <div 
-                                                key={cat}
-                                                onClick={() => setCurrentCategory(cat)}
-                                                className={cn(
-                                                    "group cursor-pointer p-8 border rounded-[2.5rem] transition-all hover:shadow-2xl hover:shadow-slate-200/50 hover:-translate-y-1 relative overflow-hidden",
-                                                    colors.bgColor,
-                                                    colors.borderColor
-                                                )}
+                        {clientSubTab === 'reports' ? (
+                            <>
+                                {!currentCategory ? (
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Pastas de Relatórios</h3>
+                                            <Button 
+                                                onClick={() => setIsReportModalOpen(true)}
+                                                className="bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-slate-900/10"
                                             >
-                                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/60 transition-colors" />
-                                                
-                                                <div className="flex items-center justify-between mb-8">
-                                                    <div className={cn(
-                                                        "w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm",
-                                                        colors.iconBg,
-                                                        "group-hover:scale-110 group-hover:rotate-3 group-hover:bg-white shadow-inner"
-                                                    )}>
-                                                        <span className="text-2xl">{cat.split(' ')[0]}</span>
-                                                    </div>
-                                                    <div className="w-10 h-10 rounded-2xl bg-white/50 flex items-center justify-center text-slate-300 group-hover:text-primary transition-all">
-                                                        <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-1 relative z-10">
-                                                    <h4 className={cn("font-black uppercase tracking-tight text-base leading-none", colors.textColor)}>
-                                                        {cat.split(' ').slice(1).join(' ') || cat}
-                                                    </h4>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] opacity-60">
-                                                        {categoryReports.length === 0 ? 'Pasta Vazia' : `${categoryReports.length} ${categoryReports.length === 1 ? 'arquivo' : 'arquivos'}`}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <button 
-                                    onClick={() => setCurrentCategory('Tudo')}
-                                    className="w-full py-6 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 hover:text-primary hover:border-primary/20 transition-all bg-slate-50/30"
-                                >
-                                    Ou visualizar todos os arquivos de uma vez
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="space-y-6">
-                                <div className="flex items-center justify-between px-2">
-                                    <div className="flex items-center gap-3">
-                                        <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg text-[9px] font-black text-primary uppercase tracking-widest">
-                                            <span>Relatórios</span>
-                                            <ChevronRight size={10} className="text-primary/30" />
-                                            <span className="text-slate-900">{currentCategory === 'Tudo' ? 'Todos os Arquivos' : currentCategory}</span>
+                                                <Plus size={16} className="mr-2" /> Novo Documento
+                                            </Button>
                                         </div>
-                                        <button onClick={() => setCurrentCategory(null)} className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-primary transition-colors underline">Trocar Pasta</button>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                            {filteredReports.length} {filteredReports.length === 1 ? 'Arquivo' : 'Arquivos'}
-                                        </span>
-                                        <Button 
-                                            size="sm"
-                                            onClick={() => setIsReportModalOpen(true)}
-                                            className="bg-primary text-white rounded-xl text-[9px] font-black uppercase px-4 h-8 shadow-lg shadow-primary/20"
-                                        >
-                                            <Plus size={14} className="mr-1.5" /> Adicionar
-                                        </Button>
-                                    </div>
-                                </div>
+                                        
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                            {REPORT_CATEGORIES.map((cat) => {
+                                                const categoryReports = reports.filter(r => {
+                                                    const reportCat = (r.category || '').toLowerCase().trim();
+                                                    const folderCat = cat.toLowerCase().trim();
+                                                    return reportCat === folderCat || reportCat.includes(folderCat) || folderCat.includes(reportCat);
+                                                });
+                                                const colors = CATEGORY_COLORS[cat] || { bgColor: 'bg-white', borderColor: 'border-slate-100', textColor: 'text-slate-900', iconBg: 'bg-slate-50', iconColor: 'text-slate-400' };
 
-                                {filteredReports.length === 0 ? (
-                                    <div className="py-20 text-center bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100 flex flex-col items-center gap-4">
-                                        <FileText className="text-slate-200" size={48} />
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Nenhum documento encontrado nesta pasta</p>
-                                    </div>
-                                ) : (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        {filteredReports.map((report) => (
-                                            <div 
-                                                key={report.id} 
-                                                className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all group"
-                                            >
-                                                <div className="flex items-center gap-4 min-w-0">
-                                                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
-                                                        <FileText size={18} />
-                                                    </div>
-                                                    <div className="min-w-0">
-                                                        <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{report.title}</h4>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{report.period}</span>
-                                                            {currentCategory === 'Tudo' && (
-                                                                <>
-                                                                    <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                                                    <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest truncate max-w-[100px]">{report.category}</span>
-                                                                </>
-                                                            )}
+                                                return (
+                                                    <div 
+                                                        key={cat}
+                                                        onClick={() => setCurrentCategory(cat)}
+                                                        className={cn(
+                                                            "group cursor-pointer p-8 border rounded-[2.5rem] transition-all hover:shadow-2xl hover:shadow-slate-200/50 hover:-translate-y-1 relative overflow-hidden",
+                                                            colors.bgColor,
+                                                            colors.borderColor
+                                                        )}
+                                                    >
+                                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/60 transition-colors" />
+                                                        
+                                                        <div className="flex items-center justify-between mb-8">
+                                                            <div className={cn(
+                                                                "w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm",
+                                                                colors.iconBg,
+                                                                "group-hover:scale-110 group-hover:rotate-3 group-hover:bg-white shadow-inner"
+                                                            )}>
+                                                                <span className="text-2xl">{cat.split(' ')[0]}</span>
+                                                            </div>
+                                                            <div className="w-10 h-10 rounded-2xl bg-white/50 flex items-center justify-center text-slate-300 group-hover:text-primary transition-all">
+                                                                <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="space-y-1 relative z-10">
+                                                            <h4 className={cn("font-black uppercase tracking-tight text-base leading-none", colors.textColor)}>
+                                                                {cat.split(' ').slice(1).join(' ') || cat}
+                                                            </h4>
+                                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] opacity-60">
+                                                                {categoryReports.length === 0 ? 'Pasta Vazia' : `${categoryReports.length} ${categoryReports.length === 1 ? 'arquivo' : 'arquivos'}`}
+                                                            </p>
                                                         </div>
                                                     </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        <button 
+                                            onClick={() => setCurrentCategory('Tudo')}
+                                            className="w-full py-6 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 hover:text-primary hover:border-primary/20 transition-all bg-slate-50/30"
+                                        >
+                                            Ou visualizar todos os arquivos de uma vez
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between px-2">
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg text-[9px] font-black text-primary uppercase tracking-widest">
+                                                    <span>Relatórios</span>
+                                                    <ChevronRight size={10} className="text-primary/30" />
+                                                    <span className="text-slate-900">{currentCategory === 'Tudo' ? 'Todos os Arquivos' : currentCategory}</span>
                                                 </div>
-                                                <div className="flex items-center gap-1">
-                                                    {report.documents?.map((doc: any, i: number) => (
-                                                        <Button 
-                                                            key={i}
-                                                            variant="ghost" 
-                                                            size="icon" 
-                                                            onClick={() => setPreviewDoc(doc)}
-                                                            className="h-8 w-8 text-primary hover:bg-primary/5 rounded-lg transition-all"
-                                                        >
-                                                            <ExternalLink size={14} />
-                                                        </Button>
-                                                    ))}
-                                                </div>
+                                                <button onClick={() => setCurrentCategory(null)} className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-primary transition-colors underline">Trocar Pasta</button>
                                             </div>
-                                        ))}
+                                            <div className="flex items-center gap-4">
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                    {filteredReports.length} {filteredReports.length === 1 ? 'Arquivo' : 'Arquivos'}
+                                                </span>
+                                                <Button 
+                                                    size="sm"
+                                                    onClick={() => setIsReportModalOpen(true)}
+                                                    className="bg-primary text-white rounded-xl text-[9px] font-black uppercase px-4 h-8 shadow-lg shadow-primary/20"
+                                                >
+                                                    <Plus size={14} className="mr-1.5" /> Adicionar
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {filteredReports.length === 0 ? (
+                                            <div className="py-20 text-center bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100 flex flex-col items-center gap-4">
+                                                <FileText className="text-slate-200" size={48} />
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Nenhum documento encontrado nesta pasta</p>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                {filteredReports.map((report) => (
+                                                    <div 
+                                                        key={report.id} 
+                                                        className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all group"
+                                                    >
+                                                        <div className="flex items-center gap-4 min-w-0">
+                                                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+                                                                <FileText size={18} />
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{report.title}</h4>
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{report.period}</span>
+                                                                    {currentCategory === 'Tudo' && (
+                                                                        <>
+                                                                            <div className="w-1 h-1 rounded-full bg-slate-200" />
+                                                                            <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest truncate max-w-[100px]">{report.category}</span>
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            {report.documents?.map((doc: any, i: number) => (
+                                                                <Button 
+                                                                    key={i}
+                                                                    variant="ghost" 
+                                                                    size="icon" 
+                                                                    onClick={() => setPreviewDoc(doc)}
+                                                                    className="h-8 w-8 text-primary hover:bg-primary/5 rounded-lg transition-all"
+                                                                >
+                                                                    <ExternalLink size={14} />
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
+                            </>
+                        ) : (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <div className="flex items-center gap-3 mb-4">
+                                    <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+                                        <Settings size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Limites do Cliente</h3>
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Personalize o plano para este cliente específico</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Plano Base</label>
+                                        <select 
+                                            value={selectedClient.planId || 'essencial'}
+                                            onChange={(e) => setSelectedClient({...selectedClient, planId: e.target.value})}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none font-mono"
+                                        >
+                                            <option value="essencial">ESSENCIAL</option>
+                                            <option value="profissional">PROFISSIONAL</option>
+                                            <option value="premium">PREMIUM</option>
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Limite de Lançamentos (0=Global)</label>
+                                        <input 
+                                            type="number"
+                                            value={selectedClient.entriesLimit || 0}
+                                            onChange={(e) => setSelectedClient({...selectedClient, entriesLimit: Number(e.target.value)})}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                            placeholder="Ex: 100"
+                                        />
+                                        <p className="text-[8px] text-slate-400 font-bold italic px-1">Se definido como 0, usará o limite padrão do plano selecionado.</p>
+                                    </div>
+                                </div>
+
+                                <div className="pt-4 border-t border-slate-50">
+                                    <Button 
+                                        onClick={handleUpdateClientConfig}
+                                        disabled={saving}
+                                        className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-8 h-12 shadow-xl shadow-primary/20"
+                                    >
+                                        {saving ? <Loader2 size={16} className="animate-spin" /> : 'Salvar Alterações do Cliente'}
+                                    </Button>
+                                </div>
+
+                                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex gap-3">
+                                    <Info size={16} className="text-primary shrink-0" />
+                                    <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tight">Estas configurações sobrescrevem as regras globais dos planos apenas para este cliente.</p>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -1502,6 +1606,16 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                                 <option value="premium">PREMIUM</option>
                                             </select>
                                         </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Limite de Lançamentos</label>
+                                            <input 
+                                                type="number"
+                                                value={entriesLimit}
+                                                onChange={(e) => setEntriesLimit(Number(e.target.value))}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                                placeholder="Ex: 50 (0 = padrão do plano)"
+                                            />
+                                        </div>
 
                                         <Button 
                                             type="submit"
@@ -1592,17 +1706,25 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             }
             setIsInviting(true);
             try {
-                // We don't have the UID yet, so we create a record with a temporary ID (email or random)
-                // or we just tell the admin that the user needs to sign up.
-                // Best practice: Admin creates the "Pre-Registration" record.
-                // We'll use the email as an identifier if we want to pre-configure them.
+                // Create a pre-registration profile if needed
+                const clientId = `client_${Date.now()}`;
+                const newClient = {
+                    uid: clientId,
+                    name: inviteData.name,
+                    email: inviteData.email,
+                    planId: inviteData.plan,
+                    role: 'client',
+                    status: 'Ativo',
+                    createdAt: serverTimestamp(),
+                };
+                await setDoc(doc(db, 'userProfiles', clientId), newClient);
                 
-                // For now, let's just add a message that they should invite the user.
-                alert(`Convite preparado para ${inviteData.name}. No momento, o usuário deve se cadastrar no site usando o e-mail ${inviteData.email} para que você possa gerenciar o acesso dele aqui.`);
+                alert(`Configurações preparadas para ${inviteData.name}. Quando o usuário se cadastrar com o e-mail ${inviteData.email}, ele já terá este plano.`);
                 setIsInviteModalOpen(false);
                 setInviteData({ email: '', name: '', plan: 'essencial' });
-            } catch (err) {
+            } catch (err: any) {
                 console.error(err);
+                alert(`Erro ao criar convite: ${err.message}`);
             } finally {
                 setIsInviting(false);
             }
@@ -1834,43 +1956,51 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             return () => unsubscribe();
         }, [isAdmin]);
 
-        const handleSave = async () => {
-            setSaving(true);
-            try {
-                // Busca configuração atual para comparar preços
-                const currentSnap = await getDoc(doc(db, 'system_configs', 'plans_config'));
-                const currentData = currentSnap.exists() ? currentSnap.data().plans : {};
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            // Get current config for price comparison
+            const currentSnap = await getDoc(doc(db, 'system_configs', 'plans_config'));
+            const currentData = currentSnap.exists() ? currentSnap.data().plans : {};
+            
+            // Create a deep copy to avoid mutations
+            const plansToSave = JSON.parse(JSON.stringify(plans));
+            
+            Object.keys(plansToSave).forEach(key => {
+                const oldPrice = (currentData && currentData[key]) ? currentData[key].price : undefined;
+                const newPrice = plansToSave[key].price;
                 
-                const plansToSave = { ...plans };
+                if (oldPrice !== undefined && oldPrice !== newPrice) {
+                    plansToSave[key].previousPrice = oldPrice;
+                    plansToSave[key].priceUpdatedAt = new Date().toISOString();
+                } else if (currentData && currentData[key]?.priceUpdatedAt) {
+                    plansToSave[key].previousPrice = currentData[key].previousPrice;
+                    plansToSave[key].priceUpdatedAt = currentData[key].priceUpdatedAt;
+                }
                 
-                Object.keys(plansToSave).forEach(key => {
-                    const oldPrice = currentData[key]?.price;
-                    const newPrice = plansToSave[key].price;
-                    
-                    if (oldPrice !== undefined && oldPrice !== newPrice) {
-                        // O preço mudou! Armazena histórico e data da alteração
-                        plansToSave[key].previousPrice = oldPrice;
-                        plansToSave[key].priceUpdatedAt = new Date().toISOString();
-                    } else if (currentData[key]?.priceUpdatedAt) {
-                        // Mantém os metadados de preço anteriores se não mudou agora
-                        plansToSave[key].previousPrice = currentData[key].previousPrice;
-                        plansToSave[key].priceUpdatedAt = currentData[key].priceUpdatedAt;
-                    }
-                });
+                // Safety check: ensure entriesLimit is saved as a number
+                if (plansToSave[key].entriesLimit !== undefined) {
+                    plansToSave[key].entriesLimit = Number(plansToSave[key].entriesLimit) || 0;
+                }
+            });
 
-                await setDoc(doc(db, 'system_configs', 'plans_config'), {
-                    plans: plansToSave,
-                    updatedAt: serverTimestamp(),
-                    updatedBy: user?.uid
-                });
-                alert("Configurações salvas com sucesso! As permissões dos clientes serão atualizadas automaticamente.");
-            } catch (error) {
-                console.error("Error saving plans config:", error);
-                alert("Erro ao salvar configurações.");
-            } finally {
-                setSaving(false);
-            }
-        };
+            // Ensure the document structure is exactly as expected
+            const configPayload = {
+                plans: plansToSave,
+                updatedAt: serverTimestamp(),
+                updatedBy: user?.uid
+            };
+
+            await setDoc(doc(db, 'system_configs', 'plans_config'), configPayload);
+
+            alert("Configurações salvas com sucesso!");
+        } catch (error: any) {
+            console.error("Error saving plans config:", error);
+            alert(`Erro ao salvar: ${error.message || 'Verifique sua conexão'}`);
+        } finally {
+            setSaving(false);
+        }
+    };
 
         const toggleReport = (planKey: string, reportName: string) => {
             const currentReports = [...plans[planKey].reports];
@@ -1966,26 +2096,35 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                             </div>
 
                             <div className="space-y-2">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1 mb-2">Relatórios Disponíveis</p>
+                                <div className="flex items-center justify-between px-1 mb-2">
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Relatórios Disponíveis</p>
+                                    {planKey === 'essencial' && (
+                                        <span className="text-[8px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded-full uppercase tracking-tighter">Fixo: Conciliação</span>
+                                    )}
+                                </div>
                                 {allReports.map((report) => {
                                     const isEnabled = plans[planKey].reports.includes(report);
+                                    // Conciliação Bancária is mandatory for all plans according to user request
+                                    const isMandatory = normalizeString(report).includes('conciliacao');
+                                    
                                     return (
                                         <button
                                             key={report}
-                                            onClick={() => toggleReport(planKey, report)}
+                                            onClick={() => !isMandatory && toggleReport(planKey, report)}
                                             className={cn(
                                                 "w-full flex items-center justify-between p-3 rounded-xl text-[10px] font-black uppercase transition-all border",
-                                                isEnabled 
+                                                (isEnabled || isMandatory)
                                                     ? "bg-white border-primary/20 text-slate-900 shadow-sm" 
-                                                    : "bg-slate-100/50 border-transparent text-slate-400 opacity-60 hover:opacity-100"
+                                                    : "bg-slate-100/50 border-transparent text-slate-400 opacity-60 hover:opacity-100",
+                                                isMandatory && "cursor-default"
                                             )}
                                         >
                                             <span className="truncate mr-2">{report}</span>
                                             <div className={cn(
                                                 "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
-                                                isEnabled ? "bg-primary text-white" : "bg-slate-200"
+                                                (isEnabled || isMandatory) ? "bg-primary text-white" : "bg-slate-200"
                                             )}>
-                                                {isEnabled && <CheckCircle2 size={10} />}
+                                                {(isEnabled || isMandatory) && <CheckCircle2 size={10} />}
                                             </div>
                                         </button>
                                     );

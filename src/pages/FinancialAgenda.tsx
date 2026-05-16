@@ -26,6 +26,7 @@ import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
 import { useAuth } from '../context/AuthContext';
 import { useClient } from '../context/ClientContext';
+import { PLAN_CONFIG, normalizePlan } from '../lib/planUtils';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -166,12 +167,15 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
         try {
             // Check plan limits for creation
             if (!isAdmin) {
-                const planKey = profile?.planId || 'essencial';
+                const planKey = normalizePlan(profile?.planId);
                 const config = Array.isArray(plansConfig) 
                     ? plansConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === planKey)
                     : (plansConfig ? plansConfig[planKey] : null);
                 
-                const limit = config?.entriesLimit ?? (planKey === 'essencial' ? 50 : planKey === 'profissional' ? 150 : 0);
+                // Use profile.entriesLimit if defined (custom limit), otherwise fallback to config/plan default
+                const limit = (profile?.entriesLimit && profile.entriesLimit > 0)
+                    ? profile.entriesLimit
+                    : (config?.entriesLimit ?? PLAN_CONFIG[planKey].entriesLimit);
                 
                 if (limit > 0) {
                     const q = query(collection(db, path));

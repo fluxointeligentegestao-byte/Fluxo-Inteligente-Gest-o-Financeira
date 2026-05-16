@@ -11,17 +11,20 @@ export const PLAN_CONFIG = {
     essencial: {
         level: 1,
         label: 'Essencial',
-        keywords: ['essenc', 'basic']
+        keywords: ['essenc', 'basic'],
+        entriesLimit: 50
     },
     profissional: {
         level: 2,
         label: 'Profissional',
-        keywords: ['profissi', 'professional']
+        keywords: ['profissi', 'professional'],
+        entriesLimit: 150
     },
     premium: {
         level: 3,
         label: 'Premium',
-        keywords: ['premium', 'consult', 'vip', 'master']
+        keywords: ['premium', 'consult', 'vip', 'master'],
+        entriesLimit: 0 // Unlimited
     }
 };
 
@@ -42,7 +45,7 @@ export const normalizePlan = (plan: string | undefined | null): UserPlan => {
 /**
  * Normalizes a string for comparison by removing accents, special characters, and converting to lowercase
  */
-const normalizeString = (str: string): string => {
+export const normalizeString = (str: string): string => {
     if (!str) return '';
     return str
         .toLowerCase()
@@ -64,6 +67,9 @@ export const canAccessReport = (plan: string | undefined | null, category: strin
     const normalizedPlan = normalizePlan(plan);
     const searchCat = normalizeString(category);
     
+    // Conciliação Bancária is mandatory for ALL plans according to user request
+    if (searchCat.includes('conciliacao') || searchCat.includes('bancaria')) return true;
+
     // Explicit keywords mapping for robust matching
     const keywords = {
         agenda: ['agenda', 'financeiromensal', 'contas'],
@@ -83,17 +89,16 @@ export const canAccessReport = (plan: string | undefined | null, category: strin
     }
 
     // If we have an explicit dynamic configuration for this plan and it has the reports list,
-    // we MUST use it as the source of truth if it's not empty.
-    if (planConfig && planConfig.reports && planConfig.reports.length > 0) {
+    // we MUST use it as the source of truth.
+    if (planConfig && planConfig.reports) {
         return planConfig.reports.some((r: string) => {
             const allowed = normalizeString(r);
-            // Check for exact normalized match or partial inclusion
-            // We use a more strict matching if possible
-            return searchCat === allowed || searchCat.includes(allowed) || allowed.includes(searchCat);
+            // Strict comparison for reports list
+            return searchCat === allowed || searchCat.includes(allowed);
         });
     }
 
-    // Default static logic if no dynamic config or empty reports list
+    // Default static logic if no dynamic config
     const level = PLAN_CONFIG[normalizedPlan]?.level || 1;
     
     // Level 1 access (Essencial + up)
