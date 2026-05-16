@@ -45,9 +45,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const defaultPlans = {
           essencial: { 
             level: 1, 
-            label: 'Essencial', 
+            label: 'Essencial — Operação', 
             price: 400, 
             entriesLimit: 50, 
+            tagline: 'Organização e rotina',
             reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'],
             features: [
               'Organização da rotina financeira',
@@ -59,9 +60,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
           profissional: { 
             level: 2, 
-            label: 'Profissional', 
+            label: 'Profissional — Operação', 
             price: 800, 
             entriesLimit: 150, 
+            tagline: 'Gestão estruturada',
             reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'],
             features: [
               'Gestão financeira estruturada',
@@ -73,9 +75,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
           premium: { 
             level: 3, 
-            label: 'Premium', 
+            label: 'Premium — Operação & Análise', 
             price: 1200, 
             entriesLimit: 0, 
+            tagline: 'Inteligência Estratégica',
             reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'],
             features: [
               'Tudo do Profissional +',

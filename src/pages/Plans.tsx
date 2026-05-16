@@ -101,31 +101,37 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
             const dynamic = configData[base.id];
             if (!dynamic) return base;
 
-            // Update price and reports (features)
-            const updatedFeatures = [...base.features];
-            if (dynamic.reports) {
-                const reportIdx = updatedFeatures.findIndex(f => f.category === 'Relatórios');
-                if (reportIdx !== -1) {
-                    updatedFeatures[reportIdx] = { 
-                        category: 'Relatórios', 
-                        items: dynamic.reports 
-                    };
-                } else {
-                    updatedFeatures.unshift({
-                        category: 'Relatórios',
-                        items: dynamic.reports
-                    });
-                }
+            // Prepare features list
+            const updatedFeatures: { category: string, items: string[] }[] = [];
+
+            // If we have dynamic features (advantages), use them
+            if (dynamic.features && dynamic.features.length > 0) {
+                updatedFeatures.push({
+                    category: 'Vantagens',
+                    items: dynamic.features
+                });
             }
+
+            // If we have dynamic reports, add them as a category
+            if (dynamic.reports && dynamic.reports.length > 0) {
+                updatedFeatures.push({
+                    category: 'Relatórios Disponíveis',
+                    items: dynamic.reports
+                });
+            }
+
+            // Fallback to base features if dynamic features are empty
+            const finalFeatures = updatedFeatures.length > 0 ? updatedFeatures : base.features;
 
             return {
                 ...base,
                 price: dynamic.price ?? base.price,
                 name: dynamic.label ?? base.name,
+                tagline: dynamic.tagline ?? base.tagline,
                 limit: dynamic.entriesLimit !== undefined 
                     ? (dynamic.entriesLimit === 0 ? 'lançamentos ilimitados' : `até ${dynamic.entriesLimit} lançamentos`)
                     : base.limit,
-                features: updatedFeatures
+                features: finalFeatures
             };
         });
     }, [plansConfig]);
@@ -279,7 +285,7 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
                     <div className="relative z-10">
                         <span className="text-2xl mb-4 block">🚀</span>
                         <p className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-tight leading-relaxed">
-                            Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.
+                            {plansConfig?.differentialPhrase || 'Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.'}
                         </p>
                     </div>
                 </div>

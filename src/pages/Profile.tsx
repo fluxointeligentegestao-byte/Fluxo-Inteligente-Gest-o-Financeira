@@ -27,6 +27,7 @@ import {
     ShieldCheck, 
     Plus, 
     Trash2, 
+    Rocket,
     Building2, 
     Info, 
     LockIcon, 
@@ -1937,6 +1938,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             profissional: { level: 2, label: 'Profissional', price: 800, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
             premium: { level: 3, label: 'Premium', price: 1200, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
         });
+        const [differentialPhrase, setDifferentialPhrase] = useState('Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.');
         const [loading, setLoading] = useState(true);
         const [saving, setSaving] = useState(false);
 
@@ -1945,7 +1947,9 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             const path = 'system_configs/plans_config';
             const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), (docSnap) => {
                 if (docSnap.exists()) {
-                    setPlans(docSnap.data().plans);
+                    const data = docSnap.data();
+                    if (data.plans) setPlans(data.plans);
+                    if (data.differentialPhrase) setDifferentialPhrase(data.differentialPhrase);
                 }
                 setLoading(false);
             }, (error) => {
@@ -1987,6 +1991,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             // Ensure the document structure is exactly as expected
             const configPayload = {
                 plans: plansToSave,
+                differentialPhrase: differentialPhrase,
                 updatedAt: serverTimestamp(),
                 updatedBy: user?.uid
             };
@@ -2051,6 +2056,24 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                     </Button>
                 </div>
 
+                <div className="bg-white border border-slate-100 rounded-[2rem] p-8 mb-8 shadow-sm">
+                    <div className="flex items-center gap-4 mb-6">
+                        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                            <Rocket size={20} />
+                        </div>
+                        <div>
+                            <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">Frase Diferencial</h3>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Aparece na parte inferior da página de planos do cliente</p>
+                        </div>
+                    </div>
+                    <textarea 
+                        value={differentialPhrase}
+                        onChange={(e) => setDifferentialPhrase(e.target.value)}
+                        placeholder="Digite a frase que aparecerá abaixo da tabela de planos..."
+                        className="w-full h-32 bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all resize-none shadow-inner"
+                    />
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {Object.keys(plans)
                         .sort((a, b) => (plans[a].level || 0) - (plans[b].level || 0))
@@ -2092,6 +2115,40 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                     })}
                                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
                                     placeholder="Ex: 50"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome de Exibição</label>
+                                <input 
+                                    type="text"
+                                    value={plans[planKey].label || ''}
+                                    onChange={(e) => setPlans({
+                                        ...plans,
+                                        [planKey]: {
+                                            ...plans[planKey],
+                                            label: e.target.value
+                                        }
+                                    })}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                    placeholder="Ex: Essencial — Operação"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Slogan / Tagline</label>
+                                <input 
+                                    type="text"
+                                    value={plans[planKey].tagline || ''}
+                                    onChange={(e) => setPlans({
+                                        ...plans,
+                                        [planKey]: {
+                                            ...plans[planKey],
+                                            tagline: e.target.value
+                                        }
+                                    })}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                    placeholder="Ex: Organização e rotina"
                                 />
                             </div>
 
