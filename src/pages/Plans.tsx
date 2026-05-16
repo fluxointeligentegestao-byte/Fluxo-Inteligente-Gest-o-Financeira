@@ -23,10 +23,10 @@ import { motion } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 
 export const Plans = ({ onBack }: { onBack?: () => void }) => {
-    const { profile, updateProfile } = useAuth();
+    const { profile, updateProfile, plansConfig } = useAuth();
     const [isUpdating, setIsUpdating] = useState<string | null>(null);
 
-    const plans = [
+    const getBasePlans = () => [
         { 
             id: 'essencial',
             name: 'Essencial', 
@@ -44,7 +44,7 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
         { 
             id: 'profissional',
             name: 'Profissional', 
-            price: 600, 
+            price: 800, 
             icon: Rocket,
             tagline: 'Escalabilidade ativa',
             limit: 'até 150 lançamentos',
@@ -59,7 +59,7 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
         { 
             id: 'premium',
             name: 'Premium', 
-            price: 1000, 
+            price: 1200, 
             icon: ShieldCheck,
             tagline: 'Gestão Inteligente',
             limit: 'lançamentos ilimitados',
@@ -71,6 +71,49 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
             ] 
         },
     ];
+
+    // Merge static UI data with dynamic config from DB
+    const mergedPlans = React.useMemo(() => {
+        const basePlans = getBasePlans();
+        if (!plansConfig) return basePlans;
+
+        // plansConfig could be an object (from admin UI) or array (legacy)
+        const configData = Array.isArray(plansConfig) 
+            ? plansConfig.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p }), {})
+            : plansConfig;
+
+        return basePlans.map(base => {
+            const dynamic = configData[base.id];
+            if (!dynamic) return base;
+
+            // Update price and reports (features)
+            const updatedFeatures = [...base.features];
+            if (dynamic.reports) {
+                const reportIdx = updatedFeatures.findIndex(f => f.category === 'Relatórios');
+                if (reportIdx !== -1) {
+                    updatedFeatures[reportIdx] = { 
+                        category: 'Relatórios', 
+                        items: dynamic.reports 
+                    };
+                } else {
+                    updatedFeatures.unshift({
+                        category: 'Relatórios',
+                        items: dynamic.reports
+                    });
+                }
+            }
+
+            return {
+                ...base,
+                price: dynamic.price ?? base.price,
+                name: dynamic.label ?? base.name,
+                limit: dynamic.entriesLimit !== undefined 
+                    ? (dynamic.entriesLimit === 0 ? 'lançamentos ilimitados' : `até ${dynamic.entriesLimit} lançamentos`)
+                    : base.limit,
+                features: updatedFeatures
+            };
+        });
+    }, [plansConfig]);
 
     const handleSelectPlan = async (planId: string, price: number) => {
         setIsUpdating(planId);
@@ -113,7 +156,7 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
 
             {/* Ultra Modern Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                {plans.map((plan, idx) => (
+                {mergedPlans.map((plan, idx) => (
                     <motion.div
                         key={plan.id}
                         initial={{ opacity: 0, y: 30 }}

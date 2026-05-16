@@ -1811,9 +1811,9 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
     // Admin Plan & Features Management Component
     const PlanFeaturesManagement = () => {
         const [plans, setPlans] = useState<any>({
-            essencial: { level: 1, label: 'Essencial', price: 400, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancaria'] },
-            profissional: { level: 2, label: 'Profissional', price: 800, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancaria', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
-            premium: { level: 3, label: 'Premium', price: 1200, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancaria', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
+            essencial: { level: 1, label: 'Essencial', price: 400, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'] },
+            profissional: { level: 2, label: 'Profissional', price: 800, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
+            premium: { level: 3, label: 'Premium', price: 1200, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
         });
         const [loading, setLoading] = useState(true);
         const [saving, setSaving] = useState(false);
@@ -1893,7 +1893,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
 
         const allReports = [
             '📅 Minha Agenda de Contas',
-            '🔄 Conciliação Bancaria',
+            '🔄 Conciliação Bancária',
             '📈 DRE Gerencial',
             '💰 Fluxo de Caixa',
             '📝 Relatório Mensal',
@@ -1945,6 +1945,23 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                     })}
                                     className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
                                     placeholder="0,00"
+                                />
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Lançamentos Mensais (0 = ILIM.)</label>
+                                <input 
+                                    type="number"
+                                    value={plans[planKey].entriesLimit || 0}
+                                    onChange={(e) => setPlans({
+                                        ...plans,
+                                        [planKey]: {
+                                            ...plans[planKey],
+                                            entriesLimit: Number(e.target.value)
+                                        }
+                                    })}
+                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                    placeholder="Ex: 50"
                                 />
                             </div>
 

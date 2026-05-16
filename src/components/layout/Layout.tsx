@@ -138,7 +138,10 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
       return;
     }
     const isOwnerAdmin = user?.email === 'fluxointeligente.gestao@gmail.com';
-    if (!hasAccess && !isOwnerAdmin) {
+    // If the owner is in preview mode, they should experience the restrictions
+    const effectiveIsAdmin = isOwnerAdmin && !isPreviewMode;
+    
+    if (!hasAccess && !effectiveIsAdmin) {
         alert("Esta funcionalidade não faz parte do seu pacote atual. Entre em contato com a Fluxo Inteligente para fazer o upgrade do seu plano!");
         return;
     }

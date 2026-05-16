@@ -44,7 +44,8 @@ import {
     serverTimestamp,
     Timestamp,
     runTransaction,
-    getDoc
+    getDoc,
+    getCountFromServer
 } from 'firebase/firestore';
 import { cn, formatCurrency } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -86,7 +87,7 @@ interface FinancialTransaction {
 }
 
 export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
-    const { profile, user, isAdmin, loading: authLoading } = useAuth();
+    const { profile, user, isAdmin, loading: authLoading, plansConfig } = useAuth();
     const { selectedClientId, selectedClientName, clients, setSelectedClient } = useClient();
     
     const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
@@ -294,6 +295,31 @@ export const Transactions = ({ setActiveTab, onBack }: TransactionsProps) => {
         }
 
         try {
+            // Check plan limits for creation
+            if (!isAdmin && !selectedTransaction) {
+                const planKey = profile?.planId || 'essencial';
+                const config = Array.isArray(plansConfig) 
+                    ? plansConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === planKey)
+                    : (plansConfig ? plansConfig[planKey] : null);
+                
+                // Fallback to defaults based on plan key if config from DB is missing or legacy
+                const limit = config?.entriesLimit ?? (planKey === 'essencial' ? 50 : planKey === 'profissional' ? 150 : 0);
+                
+                if (limit > 0) {
+                    const q = query(
+                        collection(db, 'transactions'),
+                        where('clientId', '==', selectedClientId)
+                    );
+                    const snap = await getCountFromServer(q);
+                    const currentCount = snap.data().count;
+                    
+                    if (currentCount >= limit) {
+                        alert(`Limite de lançamentos atingido (${limit}). Por favor, faça um upgrade para o plano Profissional ou Premium para continuar.`);
+                        return;
+                    }
+                }
+            }
+
             if (selectedTransaction) {
                 await updateDoc(doc(db, 'transactions', selectedTransaction.id), {
                     ...formData,

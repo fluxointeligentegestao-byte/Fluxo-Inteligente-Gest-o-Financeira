@@ -115,6 +115,8 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
     const normalizedPlan = normalizePlan(clientPlan);
     const planLabel = PLAN_CONFIG[normalizedPlan].label;
     const isOwnerAdmin = user?.email === 'fluxointeligente.gestao@gmail.com';
+  // If the owner is in preview mode, they should see what the client sees
+  const effectiveIsAdmin = isOwnerAdmin && !isPreviewMode;
     
     // Upload Form State
     const [title, setTitle] = useState('');
@@ -288,7 +290,7 @@ export const Reports = ({ setActiveTab }: { setActiveTab?: (tab: string) => void
                         const catReports = reports.filter(r => r.category === cat);
                         const detail = CATEGORY_DETAILS[cat];
                         // Owner Admin always has access even in preview mode to manage client
-                        const hasAccess = isOwnerAdmin || canAccessReport(clientPlan, cat, plansConfig);
+                        const hasAccess = effectiveIsAdmin || canAccessReport(clientPlan, cat, plansConfig);
 
                         return (
                             <Card 

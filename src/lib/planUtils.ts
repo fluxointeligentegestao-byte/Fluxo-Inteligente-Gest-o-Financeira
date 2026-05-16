@@ -40,37 +40,73 @@ export const normalizePlan = (plan: string | undefined | null): UserPlan => {
 };
 
 /**
+ * Normalizes a string for comparison by removing accents, special characters, and converting to lowercase
+ */
+const normalizeString = (str: string): string => {
+    if (!str) return '';
+    return str
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        // Remove emojis and all non-alphanumeric characters for a clean comparison
+        .replace(/[^\w\s]/gi, '')
+        .replace(/\s+/g, '')
+        .trim();
+};
+
+/**
  * Checks if a plan level can access a target category
  */
 export const canAccessReport = (plan: string | undefined | null, category: string, dynamicConfig?: any): boolean => {
+    if (!category) return false;
+    
     // Determine target level
     const normalizedPlan = normalizePlan(plan);
+    const searchCat = normalizeString(category);
     
-    // Use dynamic configuration if provided
-    if (dynamicConfig && dynamicConfig[normalizedPlan]) {
-        const allowedReports = dynamicConfig[normalizedPlan].reports || [];
-        const cleanCat = category.toLowerCase();
-        return allowedReports.some((r: string) => 
-            cleanCat.includes(r.toLowerCase()) || 
-            r.toLowerCase().includes(cleanCat)
-        );
+    // Explicit keywords mapping for robust matching
+    const keywords = {
+        agenda: ['agenda', 'financeiromensal', 'contas'],
+        conciliacao: ['concilia', 'bancaria'],
+        dre: ['dre', 'gerencial'],
+        fluxo: ['fluxo', 'caixa'],
+        mensal: ['mensal', 'fechamento', 'fechamentomensal'],
+        dashboard: ['dashboard', 'bi', 'indicador', 'indicadores']
+    };
+
+    // Extract proper config for this plan
+    let planConfig = (dynamicConfig && dynamicConfig[normalizedPlan]);
+    
+    // Fallback if config is an array (legacy format)
+    if (!planConfig && Array.isArray(dynamicConfig)) {
+        planConfig = dynamicConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === normalizedPlan);
     }
 
-    const level = PLAN_CONFIG[normalizedPlan].level;
-    
-    const cleanCat = category.toLowerCase();
+    // If we have an explicit dynamic configuration for this plan and it has the reports list,
+    // we MUST use it as the source of truth if it's not empty.
+    if (planConfig && planConfig.reports && planConfig.reports.length > 0) {
+        return planConfig.reports.some((r: string) => {
+            const allowed = normalizeString(r);
+            // Check for exact normalized match or partial inclusion
+            // We use a more strict matching if possible
+            return searchCat === allowed || searchCat.includes(allowed) || allowed.includes(searchCat);
+        });
+    }
+
+    // Default static logic if no dynamic config or empty reports list
+    const level = PLAN_CONFIG[normalizedPlan]?.level || 1;
     
     // Level 1 access (Essencial + up)
-    if (cleanCat.includes('agenda') || cleanCat.includes('contas')) return level >= 1;
-    if (cleanCat.includes('concilia')) return level >= 1;
+    if (keywords.agenda.some(k => searchCat.includes(k))) return level >= 1;
+    if (keywords.conciliacao.some(k => searchCat.includes(k))) return level >= 1;
     
     // Level 2 access (Profissional + up)
-    if (cleanCat.includes('dre') || cleanCat.includes('gerencial')) return level >= 2;
-    if (cleanCat.includes('fluxo') || cleanCat.includes('caixa')) return level >= 2;
+    if (keywords.dre.some(k => searchCat.includes(k))) return level >= 2;
+    if (keywords.fluxo.some(k => searchCat.includes(k))) return level >= 2;
     
     // Level 3 access (Premium only)
-    if (cleanCat.includes('mensal')) return level >= 3;
-    if (cleanCat.includes('dashboard')) return level >= 3;
+    if (keywords.mensal.some(k => searchCat.includes(k))) return level >= 3;
+    if (keywords.dashboard.some(k => searchCat.includes(k))) return level >= 3;
     
     return false;
 };

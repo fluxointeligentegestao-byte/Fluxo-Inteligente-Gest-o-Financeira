@@ -42,12 +42,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (userIsAdmin) {
         // Init default plans if admin and doesn't exist
         console.log("Initializing default plans config...");
-        const defaultPlans = [
-          { id: 'bronze', name: 'Bronze', price: 0, features: ['🎯 Dashboards', '📁 Documentos'] },
-          { id: 'silver', name: 'Prata', price: 499, features: ['🎯 Dashboards', '📁 Documentos', '📊 Relatórios Gerenciais'] },
-          { id: 'gold', name: 'Ouro', price: 999, features: ['🎯 Dashboards', '📁 Documentos', '📊 Relatórios Gerenciais', '💬 Consultoria'] },
-          { id: 'premium', name: 'Premium (Full)', price: 1999, features: ['🎯 Dashboards', '📁 Documentos', '📊 Relatórios Gerenciais', '💬 Consultoria', '🚀 Suporte Prioritário'] }
-        ];
+        const defaultPlans = {
+          essencial: { level: 1, label: 'Essencial', price: 400, entriesLimit: 50, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'] },
+          profissional: { level: 2, label: 'Profissional', price: 800, entriesLimit: 150, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
+          premium: { level: 3, label: 'Premium', price: 1200, entriesLimit: 0, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
+        };
         try {
           await setDoc(doc(db, 'system_configs', 'plans_config'), { 
             plans: defaultPlans,

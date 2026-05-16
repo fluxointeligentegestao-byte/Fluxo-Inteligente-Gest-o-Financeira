@@ -49,12 +49,12 @@ interface ClientDocument {
 }
 
 const DOC_TYPES_CONFIG = [
-    { name: 'Contas a Pagar', color: 'slate', bgColor: 'bg-slate-50/70', borderColor: 'border-slate-200', textColor: 'text-slate-700', iconBg: 'bg-slate-100', iconColor: 'text-slate-500' },
-    { name: 'Contas a Receber', color: 'emerald', bgColor: 'bg-emerald-50/70', borderColor: 'border-emerald-200', textColor: 'text-emerald-700', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-500' },
-    { name: 'Extratos Bancários', color: 'amber', bgColor: 'bg-amber-50/70', borderColor: 'border-amber-200', textColor: 'text-amber-700', iconBg: 'bg-amber-100', iconColor: 'text-amber-500' },
-    { name: 'Notas Fiscais', color: 'indigo', bgColor: 'bg-indigo-50/70', borderColor: 'border-indigo-200', textColor: 'text-indigo-700', iconBg: 'bg-indigo-100', iconColor: 'text-indigo-500' },
-    { name: 'Folha de Pagamento', color: 'rose', bgColor: 'bg-rose-50/70', borderColor: 'border-rose-200', textColor: 'text-rose-700', iconBg: 'bg-rose-100', iconColor: 'text-rose-500' },
-    { name: 'Outros', color: 'teal', bgColor: 'bg-teal-50/70', borderColor: 'border-teal-200', textColor: 'text-teal-700', iconBg: 'bg-teal-100', iconColor: 'text-teal-500' }
+    { name: 'Contas a Pagar', emoji: '💸', bgColor: 'bg-[#F2F1EF]', borderColor: 'border-[#E5E4E2]', textColor: 'text-[#4A4540]', iconBg: 'bg-white/60', iconColor: 'text-[#7A7570]' },
+    { name: 'Contas a Receber', emoji: '💰', bgColor: 'bg-[#EBF0EE]', borderColor: 'border-[#DAE3E0]', textColor: 'text-[#2D453E]', iconBg: 'bg-white/60', iconColor: 'text-[#4E6C63]' },
+    { name: 'Extratos Bancários', emoji: '🏦', bgColor: 'bg-[#E9EDF2]', borderColor: 'border-[#D5DEE8]', textColor: 'text-[#304156]', iconBg: 'bg-white/60', iconColor: 'text-[#536B87]' },
+    { name: 'Notas Fiscais', emoji: '📑', bgColor: 'bg-[#F0EFF4]', borderColor: 'border-[#E1DFE9]', textColor: 'text-[#413961]', iconBg: 'bg-white/60', iconColor: 'text-[#6B5F8A]' },
+    { name: 'Folha de Pagamento', emoji: '👥', bgColor: 'bg-[#F6F1F2]', borderColor: 'border-[#EDE2E5]', textColor: 'text-[#613941]', iconBg: 'bg-white/60', iconColor: 'text-[#9A5F6B]' },
+    { name: 'Outros', emoji: '📁', bgColor: 'bg-[#F4F4F4]', borderColor: 'border-[#E9E9E9]', textColor: 'text-[#444444]', iconBg: 'bg-white/60', iconColor: 'text-[#777777]' }
 ];
 
 const DOC_TYPES = DOC_TYPES_CONFIG.map(t => t.name);
@@ -189,17 +189,16 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                 <div className="flex items-center gap-4">
-                    {onBack && (
-                        <button 
-                            onClick={() => {
-                                if (currentTypeFilter) setCurrentTypeFilter(null);
-                                else onBack();
-                            }}
-                            className="p-3 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-2xl transition-all no-print bg-white border border-slate-100 shadow-sm active:scale-95"
-                        >
-                            <ChevronLeft size={24} />
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => {
+                            if (currentTypeFilter) setCurrentTypeFilter(null);
+                            else if (onBack) onBack();
+                            else if (setActiveTab) setActiveTab('dashboard');
+                        }}
+                        className="p-3 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-2xl transition-all no-print bg-white border border-slate-100 shadow-sm active:scale-95"
+                    >
+                        <ChevronLeft size={24} />
+                    </button>
                     <div>
                         <div className="flex items-center gap-3 mb-2">
                             <span className="px-3 py-1 bg-primary/5 text-primary text-[10px] font-black uppercase tracking-widest rounded-full">
@@ -259,15 +258,15 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
                                 
                                 <div className="flex items-center justify-between mb-8">
                                     <div className={cn(
-                                        "w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm",
+                                        "w-16 h-16 rounded-[1.5rem] flex items-center justify-center transition-all shadow-sm border",
                                         type.iconBg,
-                                        type.iconColor,
-                                        "group-hover:scale-110 group-hover:rotate-3"
+                                        type.borderColor,
+                                        "group-hover:scale-110 group-hover:rotate-3 group-hover:bg-white"
                                     )}>
                                         <div className="relative">
-                                            <FileText size={28} strokeWidth={1.5} />
+                                            <span className="text-3xl filter saturate-[0.8]">{type.emoji}</span>
                                             {typeDocs.length > 0 && (
-                                                <span className="absolute -top-2 -right-2 w-5 h-5 bg-slate-900 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-black shadow-lg">
+                                                <span className="absolute -top-3 -right-3 w-6 h-6 bg-slate-900 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-black shadow-lg">
                                                     {typeDocs.length}
                                                 </span>
                                             )}

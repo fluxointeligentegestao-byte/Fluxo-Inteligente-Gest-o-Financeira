@@ -41,7 +41,8 @@ import {
     doc,
     updateDoc,
     serverTimestamp,
-    Timestamp 
+    Timestamp,
+    getCountFromServer
 } from 'firebase/firestore';
 import { cn, formatCurrency } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -74,7 +75,7 @@ interface FinancialAgendaProps {
 }
 
 export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) => {
-    const { profile, user, isAdmin } = useAuth();
+    const { profile, user, isAdmin, plansConfig } = useAuth();
     const { selectedClientId, selectedClientName, clients, setSelectedClient } = useClient();
     const [entries, setEntries] = useState<FinancialEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -163,6 +164,27 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
 
         const path = `financialAgenda/${activeClientId}/entries`;
         try {
+            // Check plan limits for creation
+            if (!isAdmin) {
+                const planKey = profile?.planId || 'essencial';
+                const config = Array.isArray(plansConfig) 
+                    ? plansConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === planKey)
+                    : (plansConfig ? plansConfig[planKey] : null);
+                
+                const limit = config?.entriesLimit ?? (planKey === 'essencial' ? 50 : planKey === 'profissional' ? 150 : 0);
+                
+                if (limit > 0) {
+                    const q = query(collection(db, path));
+                    const snap = await getCountFromServer(q);
+                    const currentCount = snap.data().count;
+                    
+                    if (currentCount >= limit) {
+                        alert(`Limite de lançamentos atingido (${limit}). Por favor, faça um upgrade para o plano Profissional ou Premium para continuar.`);
+                        return;
+                    }
+                }
+            }
+
             // Normalize date to YYYY-MM-DD
             const dateStr = newEntry.date || new Date().toISOString().substring(0, 10);
             const month = dateStr.substring(0, 7);
@@ -203,8 +225,39 @@ export const FinancialAgenda = ({ setActiveTab, onBack }: FinancialAgendaProps) 
                 const path = `financialAgenda/${activeClientId}/entries`;
                 let count = 0;
 
+                // Check plan limits first
+                let currentCount = 0;
+                let limit = 0;
+                
+                if (!isAdmin) {
+                    const planKey = profile?.planId || 'essencial';
+                    const config = Array.isArray(plansConfig) 
+                        ? plansConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === planKey)
+                        : (plansConfig ? plansConfig[planKey] : null);
+                    
+                    limit = config?.entriesLimit ?? (planKey === 'essencial' ? 50 : planKey === 'profissional' ? 150 : 0);
+                    
+                    if (limit > 0) {
+                        const q = query(collection(db, path));
+                        const snap = await getCountFromServer(q);
+                        currentCount = snap.data().count;
+                        
+                        if (currentCount >= limit) {
+                            alert(`Limite de lançamentos atingido (${limit}). Por favor, faça um upgrade de plano.`);
+                            setImporting(false);
+                            return;
+                        }
+                    }
+                }
+
                 for (const row of results.data as any) {
                     try {
+                        // Check limit per row for safety
+                        if (!isAdmin && limit > 0 && (currentCount + count) >= limit) {
+                            alert(`Importação interrompida: Limite de lançamentos atingido (${limit}). Foram importados somente ${count} itens.`);
+                            break;
+                        }
+
                         const rawValue = row.valor || row.Valor || row.Value || row.Amount || row.amount;
                         const valueStr = String(rawValue).replace(/[^\d.,-]/g, '').replace(',', '.');
                         const value = parseFloat(valueStr);

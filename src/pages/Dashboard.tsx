@@ -56,13 +56,15 @@ export const Dashboard = ({ setActiveTab, onBack }: DashboardProps) => {
   const { profile, user, isAdmin, plansConfig } = useAuth();
   const { selectedClientId, selectedClientName, setSelectedClient, isPreviewMode, clients: clientList } = useClient();
   const isOwnerAdmin = user?.email === 'fluxointeligente.gestao@gmail.com';
+  // If the owner is in preview mode, they should see what the client sees
+  const effectiveIsAdmin = isOwnerAdmin && !isPreviewMode;
   const showAdminView = isAdmin && !isPreviewMode;
   
   const clientPlan = isPreviewMode 
       ? clientList.find(c => c.id === selectedClientId)?.planId 
       : profile?.planId;
   
-  const hasDashboardAccess = isOwnerAdmin || canAccessReport(clientPlan, '🎯 Dashboards', plansConfig);
+  const hasDashboardAccess = effectiveIsAdmin || canAccessReport(clientPlan, '🎯 Dashboards', plansConfig);
 
   const firstName = isPreviewMode ? (selectedClientName?.split(' ')[0] || 'Cliente') : (profile?.name?.split(' ')[0] || 'Cliente');
   
