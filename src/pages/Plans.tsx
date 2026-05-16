@@ -29,45 +29,60 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
     const getBasePlans = () => [
         { 
             id: 'essencial',
-            name: 'Essencial', 
+            name: 'Essencial — Operação', 
             price: 400, 
             icon: Zap,
-            tagline: 'Otimização inicial',
+            tagline: 'Organização e rotina',
             limit: 'até 50 lançamentos',
             color: 'text-slate-600 bg-slate-50 border-slate-200',
             features: [
-                { category: 'Relatórios', items: ['Financeiro Mensal', 'Conciliação Bancária'] },
-                { category: 'Operação', items: ['Contas Pagar/Receber', 'Cadastros Básicos'] },
-                { category: 'Suporte', items: ['Horário Comercial'] }
+                { category: 'Operação', items: [
+                    'Organização da rotina financeira',
+                    'Controle de contas a pagar e receber',
+                    'Cadastro e estruturação financeira',
+                    'Conciliação bancária básica',
+                    'Acompanhamento operacional financeiro'
+                ] }
             ] 
         },
         { 
             id: 'profissional',
-            name: 'Profissional', 
+            name: 'Profissional — Operação', 
             price: 800, 
             icon: Rocket,
-            tagline: 'Escalabilidade ativa',
+            tagline: 'Gestão estruturada',
             limit: 'até 150 lançamentos',
             highlight: true,
             color: 'text-primary bg-primary/5 border-primary/20',
             features: [
-                { category: 'Relatórios', items: ['DRE Comparativo', 'Fluxo de Caixa Diário'] },
-                { category: 'Operação', items: ['📅 Minha Agenda de Contas', 'Conciliação Avançada'] },
-                { category: 'Suporte', items: ['Reunião Mensal 30m'] }
+                { category: 'Operação', items: [
+                    'Gestão financeira estruturada',
+                    'Controle financeiro operacional',
+                    'Conciliação bancária avançada',
+                    'Conferência e organização das movimentações',
+                    'Acompanhamento financeiro mensal'
+                ] }
             ] 
         },
         { 
             id: 'premium',
-            name: 'Premium', 
+            name: 'Premium — Operação & Análise', 
             price: 1200, 
             icon: ShieldCheck,
-            tagline: 'Gestão Inteligente',
+            tagline: 'Inteligência Estratégica',
             limit: 'lançamentos ilimitados',
             color: 'text-secondary bg-secondary/5 border-secondary/20',
             features: [
-                { category: 'Análise', items: ['KPIs com BI Visual', 'Projeção 3 Meses'] },
-                { category: 'Operação', items: ['Controle de Estoque', 'Gestão Estratégica'] },
-                { category: 'Suporte', items: ['Consultoria Quinzenal'] }
+                { category: 'Operação', items: [
+                    'Gestão financeira completa',
+                    'Acompanhamento mensal avançado'
+                ] },
+                { category: 'Análise', items: [
+                    'Indicadores financeiros do fluxo de caixa',
+                    'Indicadores da DRE gerencial',
+                    'KPIs financeiros estratégicos',
+                    'Dashboards financeiros inteligentes'
+                ] }
             ] 
         },
     ];
@@ -256,6 +271,18 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest max-w-md mx-auto leading-relaxed">
                     Nossa operação organiza seus processos e garante que sua contabilidade receba dados precisos para trabalhar com velocidade e segurança.
                 </p>
+            </div>
+            {/* Differential Phrase */}
+            <div className="mt-16 text-center max-w-3xl mx-auto">
+                <div className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/40 relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-primary/10 transition-colors" />
+                    <div className="relative z-10">
+                        <span className="text-2xl mb-4 block">🚀</span>
+                        <p className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-tight leading-relaxed">
+                            Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.
+                        </p>
+                    </div>
+                </div>
             </div>
         </div>
     );

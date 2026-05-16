@@ -2130,6 +2130,52 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                     );
                                 })}
                             </div>
+
+                            <div className="pt-4 border-t border-slate-100 space-y-3">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vantagens (Site)</p>
+                                <div className="space-y-2">
+                                    {(plans[planKey].features || []).map((feature: string, idx: number) => (
+                                        <div key={idx} className="flex gap-2">
+                                            <input 
+                                                value={feature}
+                                                onChange={(e) => {
+                                                    const newFeatures = [...(plans[planKey].features || [])];
+                                                    newFeatures[idx] = e.target.value;
+                                                    setPlans({
+                                                        ...plans,
+                                                        [planKey]: { ...plans[planKey], features: newFeatures }
+                                                    });
+                                                }}
+                                                className="flex-1 bg-white border border-slate-100 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-600 outline-none"
+                                            />
+                                            <button 
+                                                onClick={() => {
+                                                    const newFeatures = (plans[planKey].features || []).filter((_: any, i: number) => i !== idx);
+                                                    setPlans({
+                                                        ...plans,
+                                                        [planKey]: { ...plans[planKey], features: newFeatures }
+                                                    });
+                                                }}
+                                                className="p-1 text-slate-300 hover:text-red-400 transition-colors"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <button 
+                                        onClick={() => {
+                                            const newFeatures = [...(plans[planKey].features || []), "Nova Vantagem"];
+                                            setPlans({
+                                                ...plans,
+                                                [planKey]: { ...plans[planKey], features: newFeatures }
+                                            });
+                                        }}
+                                        className="w-full py-1.5 border border-dashed border-slate-200 rounded-lg text-[8px] font-black text-slate-400 uppercase hover:text-primary hover:border-primary/20 transition-all"
+                                    >
+                                        + Adicionar Vantagem
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     ))}
                 </div>

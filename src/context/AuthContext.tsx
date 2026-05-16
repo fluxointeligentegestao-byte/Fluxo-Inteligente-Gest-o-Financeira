@@ -43,9 +43,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Init default plans if admin and doesn't exist
         console.log("Initializing default plans config...");
         const defaultPlans = {
-          essencial: { level: 1, label: 'Essencial', price: 400, entriesLimit: 50, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'] },
-          profissional: { level: 2, label: 'Profissional', price: 800, entriesLimit: 150, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
-          premium: { level: 3, label: 'Premium', price: 1200, entriesLimit: 0, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
+          essencial: { 
+            level: 1, 
+            label: 'Essencial', 
+            price: 400, 
+            entriesLimit: 50, 
+            reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'],
+            features: [
+              'Organização da rotina financeira',
+              'Controle de contas a pagar e receber',
+              'Cadastro e estruturação financeira',
+              'Conciliação bancária básica',
+              'Acompanhamento operacional financeiro'
+            ]
+          },
+          profissional: { 
+            level: 2, 
+            label: 'Profissional', 
+            price: 800, 
+            entriesLimit: 150, 
+            reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'],
+            features: [
+              'Gestão financeira estruturada',
+              'Controle financeiro operacional',
+              'Conciliação bancária avançada',
+              'Conferência e organização das movimentações',
+              'Acompanhamento financeiro mensal'
+            ]
+          },
+          premium: { 
+            level: 3, 
+            label: 'Premium', 
+            price: 1200, 
+            entriesLimit: 0, 
+            reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'],
+            features: [
+              'Tudo do Profissional +',
+              'Indicadores financeiros do fluxo de caixa',
+              'Indicadores da DRE gerencial',
+              'KPIs financeiros estratégicos',
+              'Dashboards financeiros inteligentes'
+            ]
+          }
         };
         try {
           await setDoc(doc(db, 'system_configs', 'plans_config'), { 
