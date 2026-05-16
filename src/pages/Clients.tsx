@@ -74,6 +74,15 @@ interface ClientsProps {
     onBack?: () => void;
 }
 
+const CATEGORY_COLORS: Record<string, { bgColor: string; borderColor: string; textColor: string; iconBg: string; iconColor: string }> = {
+    '📅 Minha Agenda de Contas': { bgColor: 'bg-slate-50/70', borderColor: 'border-slate-200', textColor: 'text-slate-700', iconBg: 'bg-slate-100', iconColor: 'text-slate-500' },
+    '🔄 Conciliação Bancária': { bgColor: 'bg-emerald-50/70', borderColor: 'border-emerald-200', textColor: 'text-emerald-700', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-500' },
+    '📈 DRE Gerencial': { bgColor: 'bg-amber-50/70', borderColor: 'border-amber-200', textColor: 'text-amber-700', iconBg: 'bg-amber-100', iconColor: 'text-amber-500' },
+    '💰 Fluxo de Caixa': { bgColor: 'bg-indigo-50/70', borderColor: 'border-indigo-200', textColor: 'text-indigo-700', iconBg: 'bg-indigo-100', iconColor: 'text-indigo-500' },
+    '📝 Relatório Mensal': { bgColor: 'bg-rose-50/70', borderColor: 'border-rose-200', textColor: 'text-rose-700', iconBg: 'bg-rose-100', iconColor: 'text-rose-500' },
+    '🎯 Dashboards': { bgColor: 'bg-teal-50/70', borderColor: 'border-teal-200', textColor: 'text-teal-700', iconBg: 'bg-teal-100', iconColor: 'text-teal-500' }
+};
+
 export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
     const { setSelectedClient: setGlobalSelectedClient } = useClient();
     const [searchTerm, setSearchTerm] = useState('');
@@ -335,8 +344,7 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
         return (
             <div className="space-y-8 pb-12">
                 <div className="flex items-center justify-between">
-                    <Button 
-                        variant="ghost" 
+                    <button 
                         onClick={() => {
                             if (currentCategory) {
                                 setCurrentCategory(null);
@@ -345,17 +353,16 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
                                 setCurrentCategory(null);
                             }
                         }}
-                        className="rounded-xl hover:bg-slate-100"
+                        className="p-3 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-2xl transition-all bg-white border border-slate-100 shadow-sm active:scale-95"
                     >
-                        <ChevronRight className="rotate-180 mr-2" size={20} /> 
-                        {currentCategory ? 'Voltar para Pastas' : 'Voltar para Lista'}
-                    </Button>
+                        <ChevronLeft size={24} />
+                    </button>
 
                     {currentCategory && (
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-400">
-                            <span>Relatórios</span>
-                            <ChevronRight size={14} />
-                            <span className="text-primary">{currentCategory}</span>
+                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 bg-slate-50 px-4 py-2 rounded-xl">
+                            <span className="uppercase tracking-widest">Pastas</span>
+                            <ChevronRight size={14} className="opacity-30" />
+                            <span className="text-primary uppercase tracking-widest">{currentCategory}</span>
                         </div>
                     )}
                 </div>
@@ -535,113 +542,50 @@ export const Clients = ({ setActiveTab, onBack }: ClientsProps) => {
                                     <span className="text-slate-900">{currentCategory}</span>
                                 </div>
                             )}
-                        </div>
-                        
-                        <div>
+
                             {!currentCategory || currentCategory === 'Tudo' ? (
-                                <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                                     {REPORT_CATEGORIES.map((cat) => {
                                         const categoryReports = reports.filter(r => {
                                             const reportCat = (r.category || '').toLowerCase().trim();
                                             const folderCat = cat.toLowerCase().trim();
                                             return reportCat === folderCat || reportCat.includes(folderCat) || folderCat.includes(reportCat);
                                         });
+                                        const colors = CATEGORY_COLORS[cat] || { bgColor: 'bg-white', borderColor: 'border-slate-100', textColor: 'text-slate-900', iconBg: 'bg-slate-50', iconColor: 'text-slate-400' };
                                         
                                         return (
-                                            <div key={cat} className="space-y-4">
-                                                <div 
-                                                    onClick={() => setCurrentCategory(cat)}
-                                                    className="flex items-center justify-between p-5 bg-white border border-slate-100 rounded-3xl group cursor-pointer hover:border-primary/30 hover:shadow-xl hover:shadow-primary/5 transition-all active:scale-[0.99] relative overflow-hidden"
-                                                >
-                                                    <div className="absolute top-0 left-0 w-1.5 h-full bg-primary/10 group-hover:bg-primary transition-colors" />
-                                                    <div className="flex items-center gap-5">
-                                                        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
-                                                            <div className="relative">
-                                                                <FileText size={28} />
-                                                                {categoryReports.length > 0 && (
-                                                                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-black animate-in zoom-in">
-                                                                        {categoryReports.length}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                        <div>
-                                                            <h4 className="font-black text-slate-900 group-hover:text-primary transition-colors text-lg tracking-tight">{cat}</h4>
-                                                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em]">{categoryReports.length === 0 ? 'Pasta Vazia' : `${categoryReports.length} Documentos Publicados`}</p>
-                                                        </div>
+                                            <div 
+                                                key={cat}
+                                                onClick={() => setCurrentCategory(cat)}
+                                                className={cn(
+                                                    "group cursor-pointer p-6 border rounded-[2rem] transition-all hover:shadow-xl hover:shadow-slate-200/50 hover:-translate-y-1 relative overflow-hidden",
+                                                    colors.bgColor,
+                                                    colors.borderColor
+                                                )}
+                                            >
+                                                <div className="absolute top-0 right-0 w-24 h-24 bg-white/40 rounded-full blur-2xl -mr-12 -mt-12" />
+                                                
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <div className={cn(
+                                                        "w-12 h-12 rounded-2xl flex items-center justify-center transition-all shadow-sm",
+                                                        colors.iconBg,
+                                                        "group-hover:scale-110 group-hover:rotate-3 group-hover:bg-white"
+                                                    )}>
+                                                        <span className="text-xl">{cat.split(' ')[0]}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-3 pr-2">
-                                                        {categoryReports.length > 0 && (
-                                                            <span className="text-[10px] font-black uppercase text-primary bg-primary/5 px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">Abrir Pasta</span>
-                                                        )}
-                                                        <div className="w-10 h-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-300 group-hover:text-primary transition-colors">
-                                                            <ChevronRight size={20} />
-                                                        </div>
+                                                    <div className="w-8 h-8 rounded-xl bg-white/50 flex items-center justify-center text-slate-300 group-hover:text-primary transition-all">
+                                                        <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
                                                     </div>
                                                 </div>
 
-                                                {categoryReports.length > 0 ? (
-                                                    <div className="space-y-2 pl-6 border-l-2 border-slate-100">
-                                                        {categoryReports.map((report) => (
-                                                            <div 
-                                                                key={report.id} 
-                                                                className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-2xl hover:border-primary/20 hover:shadow-md hover:shadow-primary/5 transition-all group"
-                                                            >
-                                                                <div className="flex items-center gap-4 flex-1 min-w-0">
-                                                                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all shrink-0">
-                                                                        <FileText size={20} />
-                                                                    </div>
-                                                                    <div className="flex-1 min-w-0">
-                                                                        <h4 className="font-bold text-slate-800 text-sm truncate group-hover:text-primary transition-colors">{report.title}</h4>
-                                                                        <div className="flex items-center gap-3">
-                                                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{report.period}</span>
-                                                                            <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                                                            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Publicado</span>
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                
-                                                                <div className="flex items-center gap-2 ml-4">
-                                                                    {report.documents && report.documents.map((doc, idx) => (
-                                                                        <div key={idx} className="flex gap-1">
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                title={`Visualizar ${doc.name}`}
-                                                                                className="h-8 w-8 text-primary hover:bg-primary/5 rounded-lg"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    setPreviewDoc(doc);
-                                                                                }}
-                                                                            >
-                                                                                <ExternalLink size={14} />
-                                                                            </Button>
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                title={`Baixar ${doc.name}`}
-                                                                                className="h-8 w-8 text-slate-300 hover:text-slate-600 rounded-lg"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    const link = document.createElement('a');
-                                                                                    link.href = doc.url;
-                                                                                    link.download = doc.name;
-                                                                                    link.click();
-                                                                                }}
-                                                                            >
-                                                                                <Upload size={14} className="rotate-180" />
-                                                                            </Button>
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <div className="pl-6 py-2">
-                                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em] italic">Nenhum documento carregado nesta categoria</p>
-                                                    </div>
-                                                )}
+                                                <div className="space-y-1 relative z-10">
+                                                    <h4 className={cn("font-black uppercase tracking-tight text-sm", colors.textColor)}>
+                                                        {cat.split(' ').slice(1).join(' ') || cat}
+                                                    </h4>
+                                                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-[0.2em] opacity-60">
+                                                        {categoryReports.length === 0 ? 'Pasta Vazia' : `${categoryReports.length} ${categoryReports.length === 1 ? 'arquivo' : 'arquivos'}`}
+                                                    </p>
+                                                </div>
                                             </div>
                                         );
                                     })}

@@ -48,14 +48,16 @@ interface ClientDocument {
     createdAt: any;
 }
 
-const DOC_TYPES = [
-    'Contas a Pagar',
-    'Contas a Receber',
-    'Extratos Bancários',
-    'Notas Fiscais',
-    'Folha de Pagamento',
-    'Outros'
+const DOC_TYPES_CONFIG = [
+    { name: 'Contas a Pagar', color: 'slate', bgColor: 'bg-slate-50/70', borderColor: 'border-slate-200', textColor: 'text-slate-700', iconBg: 'bg-slate-100', iconColor: 'text-slate-500' },
+    { name: 'Contas a Receber', color: 'emerald', bgColor: 'bg-emerald-50/70', borderColor: 'border-emerald-200', textColor: 'text-emerald-700', iconBg: 'bg-emerald-100', iconColor: 'text-emerald-500' },
+    { name: 'Extratos Bancários', color: 'amber', bgColor: 'bg-amber-50/70', borderColor: 'border-amber-200', textColor: 'text-amber-700', iconBg: 'bg-amber-100', iconColor: 'text-amber-500' },
+    { name: 'Notas Fiscais', color: 'indigo', bgColor: 'bg-indigo-50/70', borderColor: 'border-indigo-200', textColor: 'text-indigo-700', iconBg: 'bg-indigo-100', iconColor: 'text-indigo-500' },
+    { name: 'Folha de Pagamento', color: 'rose', bgColor: 'bg-rose-50/70', borderColor: 'border-rose-200', textColor: 'text-rose-700', iconBg: 'bg-rose-100', iconColor: 'text-rose-500' },
+    { name: 'Outros', color: 'teal', bgColor: 'bg-teal-50/70', borderColor: 'border-teal-200', textColor: 'text-teal-700', iconBg: 'bg-teal-100', iconColor: 'text-teal-500' }
 ];
+
+const DOC_TYPES = DOC_TYPES_CONFIG.map(t => t.name);
 
 export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string) => void, onBack?: () => void }) => {
     const { profile, user, isAdmin } = useAuth();
@@ -189,8 +191,11 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
                 <div className="flex items-center gap-4">
                     {onBack && (
                         <button 
-                            onClick={onBack}
-                            className="p-2 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-xl transition-all no-print"
+                            onClick={() => {
+                                if (currentTypeFilter) setCurrentTypeFilter(null);
+                                else onBack();
+                            }}
+                            className="p-3 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-2xl transition-all no-print bg-white border border-slate-100 shadow-sm active:scale-95"
                         >
                             <ChevronLeft size={24} />
                         </button>
@@ -236,33 +241,54 @@ export const Documents = ({ setActiveTab, onBack }: { setActiveTab?: (tab: strin
 
             {/* Folder View */}
             {!currentTypeFilter && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    {DOC_TYPES.map((type) => {
-                        const typeDocs = documents.filter(d => d.type === type);
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    {DOC_TYPES_CONFIG.map((type) => {
+                        const typeDocs = documents.filter(d => d.type === type.name);
                         return (
                             <Card 
-                                key={type} 
-                                onClick={() => setCurrentTypeFilter(type)}
-                                className="p-6 bg-white border-slate-100 hover:border-primary/20 hover:shadow-xl transition-all group cursor-pointer active:scale-[0.98] relative overflow-hidden rounded-3xl"
+                                key={type.name} 
+                                onClick={() => setCurrentTypeFilter(type.name)}
+                                className={cn(
+                                    "p-8 border shadow-sm transition-all group cursor-pointer active:scale-[0.98] relative overflow-hidden rounded-[2rem]",
+                                    type.bgColor,
+                                    type.borderColor,
+                                    "hover:shadow-xl hover:shadow-slate-200/40 hover:-translate-y-1"
+                                )}
                             >
-                                <div className="absolute top-0 left-0 w-1 h-full bg-primary/5 group-hover:bg-primary transition-colors" />
-                                <div className="flex items-center justify-between mb-6">
-                                    <div className="w-12 h-12 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 group-hover:text-primary transition-all shadow-inner">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/60 transition-colors" />
+                                
+                                <div className="flex items-center justify-between mb-8">
+                                    <div className={cn(
+                                        "w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm",
+                                        type.iconBg,
+                                        type.iconColor,
+                                        "group-hover:scale-110 group-hover:rotate-3"
+                                    )}>
                                         <div className="relative">
-                                            <FileText size={24} />
+                                            <FileText size={28} strokeWidth={1.5} />
                                             {typeDocs.length > 0 && (
-                                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-white text-[9px] flex items-center justify-center rounded-full border-2 border-white font-black">
+                                                <span className="absolute -top-2 -right-2 w-5 h-5 bg-slate-900 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white font-black shadow-lg">
                                                     {typeDocs.length}
                                                 </span>
                                             )}
                                         </div>
                                     </div>
-                                    <ChevronRight size={16} className="text-slate-200 group-hover:text-primary transition-colors" />
+                                    <div className={cn("p-2 rounded-xl bg-white/50", type.textColor)}>
+                                        <ChevronRight size={18} className="opacity-40 group-hover:opacity-100 transition-all group-hover:translate-x-1" />
+                                    </div>
                                 </div>
-                                <h3 className="text-sm font-black text-slate-900 group-hover:text-primary transition-colors uppercase tracking-tight leading-none">{type}</h3>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                                    {typeDocs.length === 0 ? 'Vazio' : `${typeDocs.length} arquivos`}
-                                </p>
+                                
+                                <div className="space-y-1 relative z-10">
+                                    <h3 className={cn(
+                                        "text-base font-black uppercase tracking-tight leading-none transition-colors",
+                                        type.textColor
+                                    )}>
+                                        {type.name}
+                                    </h3>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest opacity-60 group-hover:opacity-80">
+                                        {typeDocs.length === 0 ? 'Nenhum item' : `${typeDocs.length} ${typeDocs.length === 1 ? 'arquivo' : 'arquivos'}`}
+                                    </p>
+                                </div>
                             </Card>
                         );
                     })}

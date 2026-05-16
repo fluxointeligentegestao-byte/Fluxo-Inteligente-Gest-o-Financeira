@@ -21,8 +21,16 @@ export const Login = () => {
         try {
             await signInWithEmail(email, password);
         } catch (err: any) {
-            setError('E-mail ou senha incorretos. Verifique seus dados.');
-            console.error(err);
+            if (err.code === 'auth/invalid-credential') {
+                setError('E-mail ou senha incorretos. Se for seu primeiro acesso sem usar o Google, clique em "Primeiro acesso" abaixo para criar sua senha.');
+            } else if (err.code === 'auth/user-disabled') {
+                setError('Este usuário foi desativado. Entre em contato com o administrador.');
+            } else if (err.code === 'auth/too-many-requests') {
+                setError('Acesso bloqueado temporariamente por excesso de tentativas. Tente novamente mais tarde.');
+            } else {
+                setError('Erro ao acessar o sistema. Verifique sua internet e tente novamente.');
+            }
+            console.error('Login error:', err.code, err.message);
         } finally {
             setLoading(false);
         }
