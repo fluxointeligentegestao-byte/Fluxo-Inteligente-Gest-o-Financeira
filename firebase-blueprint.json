@@ -83,6 +83,20 @@
         "level": { "type": "string", "enum": ["info", "warning", "urgent"] }
       }
     },
+    "channel": {
+      "title": "Chat Channel",
+      "description": "Metadata for a communication channel between admin and client.",
+      "type": "object",
+      "properties": {
+        "clientName": { "type": "string" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "lastMessageText": { "type": "string" },
+        "lastSenderId": { "type": "string" },
+        "unreadCountAdmin": { "type": "number" },
+        "unreadCountClient": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
     "message": {
       "title": "Support Message",
       "description": "Real-time communication between client and BPO advisor.",
@@ -157,6 +171,7 @@
     "/reports/{reportId}": { "schema": "report", "description": "Financial reports for clients" },
     "/clientDocuments/{docId}": { "schema": "document", "description": "Uploaded documents from clients" },
     "/reminders/{reminderId}": { "schema": "reminder", "description": "Tasks and deadlines" },
+    "/channels/{channelId}": { "schema": "channel", "description": "Chat channel metadata" },
     "/channels/{channelId}/messages/{messageId}": { "schema": "message", "description": "Chat history" },
     "/financialAgenda/{clientId}/entries/{entryId}": { "schema": "financialEntry", "description": "Entries for the monthly agenda" },
     "/payments/{paymentId}": { "schema": "payment", "description": "Monthly subscription payments from clients" },

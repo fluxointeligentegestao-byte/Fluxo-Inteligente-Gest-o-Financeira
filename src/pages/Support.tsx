@@ -14,7 +14,11 @@ import {
     onSnapshot, 
     serverTimestamp,
     Timestamp,
-    where
+    where,
+    setDoc,
+    doc,
+    increment,
+    updateDoc
 } from 'firebase/firestore';
 
 interface Message {
@@ -34,6 +38,7 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
     const { profile, user, isAdmin } = useAuth();
     const { selectedClientId, selectedClientName, clients, setSelectedClient, isPreviewMode } = useClient();
     const [messages, setMessages] = useState<Message[]>([]);
+    const [channelsMetadata, setChannelsMetadata] = useState<Record<string, any>>({});
     const [newMessage, setNewMessage] = useState('');
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
@@ -58,6 +63,21 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
     }, [showAdminView, selectedClientId, clients]);
 
     useEffect(() => {
+        if (!showAdminView) return;
+
+        const q = query(collection(db, 'channels'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const metadata: Record<string, any> = {};
+            snapshot.docs.forEach(doc => {
+                metadata[doc.id] = doc.data();
+            });
+            setChannelsMetadata(metadata);
+        });
+
+        return () => unsubscribe();
+    }, [showAdminView]);
+
+    useEffect(() => {
         if (!activeChannelId) {
             setLoading(false);
             return;
@@ -75,6 +95,20 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
             setMessages(msgs);
             setLoading(false);
             scrollToBottom();
+
+            // Reset unread count for this channel when messages are loaded/viewed
+            if (activeChannelId) {
+                const channelRef = doc(db, 'channels', activeChannelId);
+                const updateData: any = {};
+                if (isAdmin && !isPreviewMode) {
+                    updateData.unreadCountAdmin = 0;
+                } else if (!isAdmin || isPreviewMode) {
+                    updateData.unreadCountClient = 0;
+                }
+                updateDoc(channelRef, updateData).catch(() => {
+                    // Channel doc might not exist yet, ignore
+                });
+            }
         }, (error) => {
             console.error("Error loading messages:", error);
             handleFirestoreError(error, OperationType.GET, path);
@@ -101,6 +135,22 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                 channelId: activeChannelId,
                 timestamp: serverTimestamp()
             });
+
+            // Update channel metadata for notifications
+            const channelRef = doc(db, 'channels', activeChannelId);
+            await setDoc(channelRef, {
+                lastMessageAt: serverTimestamp(),
+                lastMessageText: newMessage.trim(),
+                lastSenderId: user.uid,
+                clientName: activeClientName,
+                // Increment unread count for the "other" party
+                ...(isAdmin && !isPreviewMode 
+                    ? { unreadCountClient: increment(1) } 
+                    : { unreadCountAdmin: increment(1) }
+                ),
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
             setNewMessage('');
         } catch (error) {
             handleFirestoreError(error, OperationType.WRITE, path);
@@ -159,9 +209,21 @@ export const Support = ({ setActiveTab, onBack }: SupportProps) => {
                                         {client.name.charAt(0)}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className={cn("text-xs font-bold truncate", selectedClientId === client.id ? "text-primary" : "text-slate-700")}>
-                                            {client.name}
-                                        </p>
+                                        <div className="flex items-center justify-between">
+                                            <p className={cn("text-xs font-bold truncate", selectedClientId === client.id ? "text-primary" : "text-slate-700")}>
+                                                {client.name}
+                                            </p>
+                                            {channelsMetadata[client.id]?.unreadCountAdmin > 0 && (
+                                                <span className="w-4 h-4 bg-rose-500 rounded-full flex items-center justify-center text-[8px] font-black text-white shrink-0">
+                                                    {channelsMetadata[client.id].unreadCountAdmin}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {channelsMetadata[client.id]?.lastMessageText && (
+                                            <p className="text-[9px] text-slate-400 truncate mt-0.5">
+                                                {channelsMetadata[client.id].lastMessageText}
+                                            </p>
+                                        )}
                                     </div>
                                 </button>
                             ))}

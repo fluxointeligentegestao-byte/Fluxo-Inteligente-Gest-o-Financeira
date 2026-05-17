@@ -15,6 +15,8 @@ import { Registrations } from './pages/Registrations';
 import { Transactions } from './pages/Transactions';
 import { Reconciliation } from './pages/Reconciliation';
 
+import { Toaster } from 'react-hot-toast';
+
 function AppContent() {
   const { user, loading } = useAuth();
   const [activeTab, setActiveTab] = React.useState('profile');
@@ -60,6 +62,7 @@ export default function App() {
     <AuthProvider>
       <ClientProvider>
         <AppContent />
+        <Toaster position="top-right" />
       </ClientProvider>
     </AuthProvider>
   );

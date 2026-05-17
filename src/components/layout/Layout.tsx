@@ -31,6 +31,20 @@ import { canAccessTab, UserPlan } from '../../lib/planUtils';
 import { NotificationPrompt } from '../NotificationPrompt';
 import { useNotifications } from '../../hooks/useNotifications';
 
+import { toast } from 'react-hot-toast';
+
+import { 
+  collection, 
+  onSnapshot, 
+  query, 
+  where, 
+  orderBy,
+  limit,
+  doc,
+  getDoc
+} from 'firebase/firestore';
+import { db } from '../../lib/firebase';
+
 import { Logo } from '../Logo';
 
 interface LayoutProps {
@@ -43,7 +57,84 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
   const { profile, user, signOut, isAdmin, plansConfig } = useAuth();
   const { selectedClientId, setSelectedClient, clients, isPreviewMode, setIsPreviewMode } = useClient();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [totalUnreadCount, setTotalUnreadCount] = React.useState(0);
   const { permission } = useNotifications();
+
+  // Audio for notifications
+  const notificationAudio = React.useMemo(() => new Audio('https://assets.mixkit.co/active_storage/sfx/2354/2354-preview.mp3'), []);
+
+  // Real-time listener for unread messages
+  React.useEffect(() => {
+    if (!user?.uid) return;
+
+    let q;
+    if (isAdmin && !isPreviewMode) {
+      // Admin sees unread from all clients
+      q = query(collection(db, 'channels'), where('unreadCountAdmin', '>', 0));
+    } else {
+      // Client sees unread from their own channel
+      const channelId = isPreviewMode ? selectedClientId : user.uid;
+      if (!channelId) return;
+      q = query(collection(db, 'channels'), where('__name__', '==', channelId), where('unreadCountClient', '>', 0));
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let count = 0;
+      
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'modified' || change.type === 'added') {
+          const data = change.doc.data();
+          const unreadNum = (isAdmin && !isPreviewMode) ? (data.unreadCountAdmin || 0) : (data.unreadCountClient || 0);
+          
+          // If unread count increased for this specific channel
+          // and we are NOT currently looking at the support tab for this specific client
+          const isCurrentlyViewingSupport = activeTab === 'support';
+          const isCurrentlyViewingThisClient = isAdmin ? selectedClientId === change.doc.id : true;
+
+          if (unreadNum > 0 && (!isCurrentlyViewingSupport || (isAdmin && !isCurrentlyViewingThisClient))) {
+            const lastSenderId = data.lastSenderId;
+            // Don't toast if I am the one who sent it (sync across devices)
+            if (lastSenderId !== user.uid) {
+              notificationAudio.play().catch(e => console.log("Audio play failed:", e));
+              
+              toast.custom((t) => (
+                <div 
+                  onClick={() => {
+                    if (isAdmin) setSelectedClient(change.doc.id, data.clientName || 'Cliente');
+                    setActiveTab('support');
+                    toast.dismiss(t.id);
+                  }}
+                  className={cn(
+                    "bg-white border border-slate-100 shadow-2xl p-4 rounded-2xl flex gap-4 items-center cursor-pointer transition-all hover:scale-105 group active:scale-95",
+                    t.visible ? "animate-in slide-in-from-top duration-300" : "animate-out fade-out duration-200"
+                  )}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                    <MessageSquare size={20} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[10px] font-black text-primary uppercase tracking-widest mb-1">Nova Mensagem</p>
+                    <p className="text-xs font-bold text-slate-800 line-clamp-1">
+                      {isAdmin ? data.clientName : 'Suporte Central'}: {data.lastMessageText || 'Nova mensagem recebida'}
+                    </p>
+                  </div>
+                </div>
+              ), { duration: 5000 });
+            }
+          }
+        }
+      });
+
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        count += (isAdmin && !isPreviewMode) ? (data.unreadCountAdmin || 0) : (data.unreadCountClient || 0);
+      });
+      
+      setTotalUnreadCount(count);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, isAdmin, isPreviewMode, selectedClientId, totalUnreadCount]);
 
   const ClientSelector = () => {
     if (!isAdmin) return null;
@@ -224,6 +315,11 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
                   activeTab === item.id ? 'text-primary' : 'text-slate-400 group-hover:text-slate-600'
               )} />
               <span className="text-sm tracking-tight flex-1 text-left">{item.label}</span>
+              {item.id === 'support' && totalUnreadCount > 0 && (
+                <span className="absolute right-4 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white ring-4 ring-white">
+                  {totalUnreadCount > 9 ? '+9' : totalUnreadCount}
+                </span>
+              )}
               {!item.hasAccess && <Lock size={14} className="text-slate-200" />}
             </button>
           ))}
