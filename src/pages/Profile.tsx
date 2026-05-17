@@ -45,6 +45,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useClient } from '../context/ClientContext';
+import { toast } from 'react-hot-toast';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { motion, AnimatePresence } from 'motion/react';
@@ -71,15 +72,1922 @@ const CATEGORY_COLORS: Record<string, { bgColor: string; borderColor: string; te
     '🎯 Dashboards': { bgColor: 'bg-teal-50/70', borderColor: 'border-teal-200', textColor: 'text-teal-700', iconBg: 'bg-teal-100', iconColor: 'text-teal-500' }
 };
 
-export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string) => void, onBack?: () => void }) => {
-    const { profile, user, isAdmin, plansConfig, updateProfile, updateEmail, updatePassword, sendPasswordResetEmail } = useAuth();
-    const { isPreviewMode, selectedClientId, clients } = useClient();
-    const [isSaving, setIsSaving] = useState(false);
-    const [isSearchingCep, setIsSearchingCep] = useState(false);
-    const [activeSubTab, setActiveSubTab] = useState<'general' | 'security'>('general');
-    const [adminActiveTab, setAdminActiveTab] = useState<'payments' | 'clients' | 'plans' | 'users' | 'company' | 'lgpd'>('clients');
+// Admin Company Data Management
+const CompanyManagement = () => {
+    const [companyData, setCompanyData] = useState<any>({
+        name: 'Fluxo Inteligente BPO',
+        cnpj: '',
+        email: 'contato@fluxointeligente.com',
+        phone: '',
+        cep: '',
+        address: '',
+        addressNumber: '',
+        complement: '',
+        neighborhood: '',
+        city: '',
+        state: '',
+        website: 'www.fluxointeligente.com'
+    });
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [searchingCep, setSearchingCep] = useState(false);
+
+    const maskCEP = (value: string) => {
+        return value
+            .replace(/\D/g, '')
+            .replace(/^(\d{5})(\d)/, '$1-$2')
+            .substring(0, 9);
+    };
+
+    const maskPhone = (value: string) => {
+        return value
+            .replace(/\D/g, '')
+            .replace(/^(\d{2})(\d)/g, '($1) $2')
+            .replace(/(\d)(\d{4})$/, '$1-$2')
+            .substring(0, 15);
+    };
+
+    const maskDocument = (value: string) => {
+        const clean = value.replace(/\D/g, '');
+        if (clean.length <= 11) {
+            // CPF: 000.000.000-00
+            return clean
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d)/, '$1.$2')
+                .replace(/(\d{3})(\d{1,2})$/, '$1-$2')
+                .substring(0, 14);
+        } else {
+            // CNPJ: 00.000.000/0000-00
+            return clean
+                .replace(/^(\d{2})(\d)/, '$1.$2')
+                .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+                .replace(/\.(\d{3})(\d)/, '.$1/$2')
+                .replace(/(\d{4})(\d)/, '$1-$2')
+                .substring(0, 18);
+        }
+    };
+
+    useEffect(() => {
+        const fetchCompany = async () => {
+            const unsubscribe = onSnapshot(doc(db, 'system_configs', 'company_config'), (docSnap) => {
+                if (docSnap.exists()) {
+                    setCompanyData(docSnap.data());
+                }
+                setLoading(false);
+            });
+            return unsubscribe;
+        };
+        const unsub = fetchCompany();
+        return () => { unsub.then(fn => fn && (typeof fn === 'function' && fn())); };
+    }, []);
+
+    const handleCepSearch = async (cep: string) => {
+        const cleanCep = cep.replace(/\D/g, '');
+        setCompanyData(prev => ({ ...prev, cep: maskCEP(cep) }));
+        
+        if (cleanCep.length === 8) {
+            setSearchingCep(true);
+            try {
+                const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
+                const data = await response.json();
+                
+                if (!data.erro) {
+                    setCompanyData(prev => ({
+                        ...prev,
+                        address: data.logradouro,
+                        neighborhood: data.bairro,
+                        city: data.localidade,
+                        state: data.uf
+                    }));
+                }
+            } catch (error) {
+                console.error('Erro ao buscar CEP da empresa:', error);
+            } finally {
+                setSearchingCep(false);
+            }
+        }
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await setDoc(doc(db, 'system_configs', 'company_config'), {
+                ...companyData,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+            alert("Dados da Fluxo Inteligente atualizados com sucesso!");
+        } catch (error) {
+            console.error("Error saving company data:", error);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                        <Building2 size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Dados da Empresa</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Informações da Fluxo Inteligente</p>
+                    </div>
+                </div>
+                <Button 
+                    onClick={handleSave} 
+                    disabled={saving}
+                    className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20"
+                >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : 'Salvar Dados'}
+                </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Comercial</label>
+                    <input 
+                        value={companyData.name}
+                        onChange={(e) => setCompanyData({...companyData, name: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CNPJ / CPF</label>
+                    <input 
+                        value={companyData.cnpj}
+                        onChange={(e) => setCompanyData({...companyData, cnpj: maskDocument(e.target.value)})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                        placeholder="00.000.000/0001-00 ou 000.000.000-00"
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CEP</label>
+                    <div className="relative">
+                        <input 
+                            value={companyData.cep}
+                            onChange={(e) => handleCepSearch(e.target.value)}
+                            maxLength={9}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                            placeholder="00000-000"
+                        />
+                        {searchingCep && <Loader2 className="absolute right-3 top-3 animate-spin text-primary" size={16} />}
+                    </div>
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Contato</label>
+                    <input 
+                        value={companyData.email}
+                        onChange={(e) => setCompanyData({...companyData, email: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                        placeholder="contato@empresa.com"
+                    />
+                </div>
+                <div className="space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Telefone / WhatsApp</label>
+                    <input 
+                        value={companyData.phone}
+                        onChange={(e) => setCompanyData({...companyData, phone: maskPhone(e.target.value)})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                    />
+                </div>
+                <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Endereço (Logradouro)</label>
+                    <input 
+                        value={companyData.address}
+                        onChange={(e) => setCompanyData({...companyData, address: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                    />
+                </div>
+                <div className="grid grid-cols-2 gap-4 md:col-span-2">
+                    <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Número</label>
+                        <input 
+                            value={companyData.addressNumber}
+                            onChange={(e) => setCompanyData({...companyData, addressNumber: e.target.value})}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                            placeholder="123"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Complemento</label>
+                        <input 
+                            value={companyData.complement}
+                            onChange={(e) => setCompanyData({...companyData, complement: e.target.value})}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                            placeholder="Sala 01 / Bloco A"
+                        />
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 md:col-span-2">
+                    <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Bairro</label>
+                        <input 
+                            value={companyData.neighborhood}
+                            onChange={(e) => setCompanyData({...companyData, neighborhood: e.target.value})}
+                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cidade / UF</label>
+                        <input 
+                            value={`${companyData.city || ''} - ${companyData.state || ''}`}
+                            readOnly
+                            className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-400 outline-none"
+                        />
+                    </div>
+                </div>
+            </div>
+            
+            <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-center gap-3">
+                <Info size={16} className="text-primary" />
+                <p className="text-[10px] font-bold text-slate-600 uppercase tracking-tight">Estes dados serão utilizados em relatórios e cabeçalhos automáticos para seus clientes.</p>
+            </div>
+        </Card>
+    );
+};
+
+// Admin Clients Management Component (Reports, Config, CRUD) (Top Level)
+const ClientsManagement = () => {
+    const { isAdmin } = useAuth();
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [clients, setClients] = useState<any[]>([]);
+    const [reports, setReports] = useState<any[]>([]);
+
+    // Form states (Client)
+    const [name, setName] = useState('');
+    const [company, setCompany] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [planId, setPlanId] = useState('essencial');
+    const [entriesLimit, setEntriesLimit] = useState<number>(0);
+    const [selectedClient, setSelectedClient] = useState<any | null>(null);
+    const [currentCategory, setCurrentCategory] = useState<string | null>(null);
+    const [clientSubTab, setClientSubTab] = useState<'reports' | 'config'>('reports');
+
+    // Form states (Report)
+    const [reportTitle, setReportTitle] = useState('');
+    const [reportPeriod, setReportPeriod] = useState('');
+    const [reportCategory, setReportCategory] = useState(REPORT_CATEGORIES[0]);
+    const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
+    const [previewDoc, setPreviewDoc] = useState<{name: string, url: string} | null>(null);
+
+    // Real-time listener for clients
+    useEffect(() => {
+        if (!isAdmin) return;
+        const q = query(
+            collection(db, 'userProfiles'), 
+            where('role', '==', 'client')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const clientList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            }));
+            
+            const sortedClients = clientList.sort((a: any, b: any) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+
+            setClients(sortedClients);
+            setLoading(false);
+        }, (error) => {
+            console.error('Firestore Clients Error:', error);
+            handleFirestoreError(error, OperationType.LIST, 'userProfiles');
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [isAdmin]);
+
+    // Real-time listener for reports of selected client
+    useEffect(() => {
+        if (!selectedClient) {
+            setReports([]);
+            return;
+        }
+
+        const q = query(
+            collection(db, 'reports'),
+            where('clientId', '==', selectedClient.id)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const reportList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            }));
+            const sortedReports = reportList.sort((a: any, b: any) => {
+                const dateA = a.createdAt?.seconds || 0;
+                const dateB = b.createdAt?.seconds || 0;
+                return dateB - dateA;
+            });
+            setReports(sortedReports);
+        }, (error) => {
+            handleFirestoreError(error, OperationType.LIST, 'reports');
+        });
+
+        return () => unsubscribe();
+    }, [selectedClient?.id]);
+
+    const handleSaveClient = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!name || !email) return;
+
+        setSaving(true);
+        const clientId = `client_${Date.now()}`;
+        const newClient = {
+            uid: clientId, 
+            name,
+            companyName: company,
+            email,
+            phone,
+            planId,
+            entriesLimit: entriesLimit > 0 ? entriesLimit : null,
+            role: 'client',
+            status: 'Ativo',
+            createdAt: serverTimestamp(),
+        };
+
+        try {
+            await setDoc(doc(db, 'userProfiles', clientId), newClient);
+            setIsModalOpen(false);
+            setName('');
+            setCompany('');
+            setEmail('');
+            setPhone('');
+        } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `userProfiles/${clientId}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleSaveReport = async (e: React.FormEvent, shouldAddAnother = false) => {
+        e.preventDefault();
+        if (!selectedClient || !reportTitle || !reportPeriod) return;
+        if (filesToUpload.length === 0) {
+            alert('Por favor, anexe pelo menos um documento.');
+            return;
+        }
+
+        setSaving(true);
+        const reportId = `report_${Date.now()}`;
+        
+        try {
+            const totalSize = filesToUpload.reduce((acc, f) => acc + f.size, 0);
+            if (totalSize > 900000) { 
+                alert('O arquivo é um pouco grande demais. Por favor, tente um arquivo menor que 900KB.');
+                setSaving(false);
+                return;
+            }
+
+            const documentPromises = filesToUpload.map(file => {
+                return new Promise<{name: string, url: string}>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onload = () => resolve({
+                        name: file.name,
+                        url: reader.result as string
+                    });
+                    reader.onerror = error => reject(error);
+                });
+            });
+
+            const dummyDocuments = await Promise.all(documentPromises);
+
+            const newReport = {
+                clientId: selectedClient.id,
+                title: reportTitle,
+                category: reportCategory,
+                period: reportPeriod,
+                documents: dummyDocuments,
+                status: 'published',
+                createdAt: serverTimestamp(),
+            };
+
+            await setDoc(doc(db, 'reports', reportId), newReport);
+            
+            alert('Relatório publicado com sucesso!');
+            setReportTitle('');
+            setReportPeriod('');
+            setReportCategory(REPORT_CATEGORIES[0]);
+            setFilesToUpload([]);
+
+            if (!shouldAddAnother) {
+                setIsReportModalOpen(false);
+            }
+        } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `reports/${reportId}`);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const filteredClients = clients.filter(c => 
+        c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        c.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    const handleUpdateClientConfig = async () => {
+        if (!selectedClient) return;
+        setSaving(true);
+        try {
+            const clientRef = doc(db, 'userProfiles', selectedClient.id);
+            const updates = {
+                planId: selectedClient.planId,
+                entriesLimit: selectedClient.entriesLimit || null,
+                updatedAt: serverTimestamp()
+            };
+            await updateDoc(clientRef, updates);
+            alert("Configurações do cliente atualizadas!");
+        } catch (error) {
+            console.error("Error updating client:", error);
+            alert("Erro ao atualizar cliente.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    if (selectedClient) {
+        const filteredReports = reports.filter(r => {
+            if (!currentCategory || currentCategory === 'Tudo') return true;
+            const reportCat = (r.category || '').toLowerCase().trim();
+            const selectedCat = (currentCategory || '').toLowerCase().trim();
+            return reportCat === selectedCat || reportCat.includes(selectedCat) || selectedCat.includes(reportCat);
+        });
+
+        return (
+            <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5 min-h-[600px]">
+                <div className="flex items-center justify-between">
+                    <button 
+                        onClick={() => {
+                            if (currentCategory) setCurrentCategory(null);
+                            else setSelectedClient(null);
+                        }}
+                        className="p-3 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-2xl transition-all no-print bg-white border border-slate-100 shadow-sm active:scale-95"
+                    >
+                        <ChevronLeft size={24} />
+                    </button>
+
+                    <div className="flex flex-col items-end">
+                        <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight">{selectedClient.name}</h2>
+                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{selectedClient.companyName || 'Empresa não definida'}</p>
+                    </div>
+                </div>
+
+                {/* Subtabs for Client View */}
+                <div className="flex items-center gap-4 border-b border-slate-50">
+                    <button 
+                        onClick={() => setClientSubTab('reports')}
+                        className={cn(
+                            "text-[10px] font-black uppercase tracking-widest pb-3 transition-all border-b-2",
+                            clientSubTab === 'reports' ? "text-primary border-primary" : "text-slate-400 border-transparent hover:text-slate-600"
+                        )}
+                    >
+                        Relatórios e Arquivos
+                    </button>
+                    <button 
+                        onClick={() => setClientSubTab('config')}
+                        className={cn(
+                            "text-[10px] font-black uppercase tracking-widest pb-3 transition-all border-b-2",
+                            clientSubTab === 'config' ? "text-primary border-primary" : "text-slate-400 border-transparent hover:text-slate-600"
+                        )}
+                    >
+                        Configurações do Plano
+                    </button>
+                </div>
+
+                <div className="space-y-8">
+                    {clientSubTab === 'reports' ? (
+                        <>
+                            {!currentCategory ? (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Pastas de Relatórios</h3>
+                                        <Button 
+                                            onClick={() => setIsReportModalOpen(true)}
+                                            className="bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-slate-900/10"
+                                        >
+                                            <Plus size={16} className="mr-2" /> Novo Documento
+                                        </Button>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        {REPORT_CATEGORIES.map((cat) => {
+                                            const categoryReports = reports.filter(r => {
+                                                const reportCat = (r.category || '').toLowerCase().trim();
+                                                const folderCat = cat.toLowerCase().trim();
+                                                return reportCat === folderCat || reportCat.includes(folderCat) || folderCat.includes(reportCat);
+                                            });
+                                            const colors = CATEGORY_COLORS[cat] || { bgColor: 'bg-white', borderColor: 'border-slate-100', textColor: 'text-slate-900', iconBg: 'bg-slate-50', iconColor: 'text-slate-400' };
+
+                                            return (
+                                                <div 
+                                                    key={cat}
+                                                    onClick={() => setCurrentCategory(cat)}
+                                                    className={cn(
+                                                        "group cursor-pointer p-8 border rounded-[2.5rem] transition-all hover:shadow-2xl hover:shadow-slate-200/50 hover:-translate-y-1 relative overflow-hidden",
+                                                        colors.bgColor,
+                                                        colors.borderColor
+                                                    )}
+                                                >
+                                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/60 transition-colors" />
+                                                    
+                                                    <div className="flex items-center justify-between mb-8">
+                                                        <div className={cn(
+                                                            "w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm",
+                                                            colors.iconBg,
+                                                            "group-hover:scale-110 group-hover:rotate-3 group-hover:bg-white shadow-inner"
+                                                        )}>
+                                                            <span className="text-2xl">{cat.split(' ')[0]}</span>
+                                                        </div>
+                                                        <div className="w-10 h-10 rounded-2xl bg-white/50 flex items-center justify-center text-slate-300 group-hover:text-primary transition-all">
+                                                            <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="space-y-1 relative z-10">
+                                                        <h4 className={cn("font-black uppercase tracking-tight text-base leading-none", colors.textColor)}>
+                                                            {cat.split(' ').slice(1).join(' ') || cat}
+                                                        </h4>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] opacity-60">
+                                                            {categoryReports.length === 0 ? 'Pasta Vazia' : `${categoryReports.length} ${categoryReports.length === 1 ? 'arquivo' : 'arquivos'}`}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <button 
+                                        onClick={() => setCurrentCategory('Tudo')}
+                                        className="w-full py-6 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 hover:text-primary hover:border-primary/20 transition-all bg-slate-50/30"
+                                    >
+                                        Ou visualizar todos os arquivos de uma vez
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between px-2">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg text-[9px] font-black text-primary uppercase tracking-widest">
+                                                <span>Relatórios</span>
+                                                <ChevronRight size={10} className="text-primary/30" />
+                                                <span className="text-slate-900">{currentCategory === 'Tudo' ? 'Todos os Arquivos' : currentCategory}</span>
+                                            </div>
+                                            <button onClick={() => setCurrentCategory(null)} className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-primary transition-colors underline">Trocar Pasta</button>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                {filteredReports.length} {filteredReports.length === 1 ? 'Arquivo' : 'Arquivos'}
+                                            </span>
+                                            <Button 
+                                                size="sm"
+                                                onClick={() => setIsReportModalOpen(true)}
+                                                className="bg-primary text-white rounded-xl text-[9px] font-black uppercase px-4 h-8 shadow-lg shadow-primary/20"
+                                            >
+                                                <Plus size={14} className="mr-1.5" /> Adicionar
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    {filteredReports.length === 0 ? (
+                                        <div className="py-20 text-center bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100 flex flex-col items-center gap-4">
+                                            <FileText className="text-slate-200" size={48} />
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Nenhum documento encontrado nesta pasta</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            {filteredReports.map((report) => (
+                                                <div 
+                                                    key={report.id} 
+                                                    className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all group"
+                                                >
+                                                    <div className="flex items-center gap-4 min-w-0">
+                                                        <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
+                                                            <FileText size={18} />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{report.title}</h4>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{report.period}</span>
+                                                                {currentCategory === 'Tudo' && (
+                                                                    <>
+                                                                        <div className="w-1 h-1 rounded-full bg-slate-200" />
+                                                                        <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest truncate max-w-[100px]">{report.category}</span>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        {report.documents?.map((doc: any, i: number) => (
+                                                            <Button 
+                                                                key={i}
+                                                                variant="ghost" 
+                                                                size="icon" 
+                                                                onClick={() => setPreviewDoc(doc)}
+                                                                className="h-8 w-8 text-primary hover:bg-primary/5 rounded-lg transition-all"
+                                                            >
+                                                                <ExternalLink size={14} />
+                                                            </Button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
+                                    <Settings size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Limites do Cliente</h3>
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Personalize o plano para este cliente específico</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Plano Base</label>
+                                    <select 
+                                        value={selectedClient.planId || 'essencial'}
+                                        onChange={(e) => setSelectedClient({...selectedClient, planId: e.target.value})}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none font-mono"
+                                    >
+                                        <option value="essencial">ESSENCIAL</option>
+                                        <option value="profissional">PROFISSIONAL</option>
+                                        <option value="premium">PREMIUM</option>
+                                    </select>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Limite de Lançamentos (0=Global)</label>
+                                    <input 
+                                        type="number"
+                                        value={selectedClient.entriesLimit || 0}
+                                        onChange={(e) => setSelectedClient({...selectedClient, entriesLimit: Number(e.target.value)})}
+                                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                        placeholder="Ex: 100"
+                                    />
+                                    <p className="text-[8px] text-slate-400 font-bold italic px-1">Se definido como 0, usará o limite padrão do plano selecionado.</p>
+                                </div>
+                            </div>
+
+                            <div className="pt-4 border-t border-slate-50">
+                                <Button 
+                                    onClick={handleUpdateClientConfig}
+                                    disabled={saving}
+                                    className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-8 h-12 shadow-xl shadow-primary/20"
+                                >
+                                    {saving ? <Loader2 size={16} className="animate-spin" /> : 'Salvar Alterações do Cliente'}
+                                </Button>
+                            </div>
+
+                            <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex gap-3">
+                                <Info size={16} className="text-primary shrink-0" />
+                                <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tight">Estas configurações sobrescrevem as regras globais dos planos apenas para este cliente.</p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Report Upload Modal */}
+                <AnimatePresence>
+                    {isReportModalOpen && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden"
+                            >
+                                <div className="p-8 space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                                <Upload size={20} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Publicar Documento</h3>
+                                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{selectedClient.name}</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setIsReportModalOpen(false)} className="text-slate-400 hover:text-slate-900">
+                                            <X size={20} />
+                                        </button>
+                                    </div>
+
+                                    <form onSubmit={(e) => handleSaveReport(e)} className="space-y-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria / Pasta</label>
+                                            <select 
+                                                value={reportCategory}
+                                                onChange={(e) => setReportCategory(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none"
+                                            >
+                                                {REPORT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Título do Documento</label>
+                                            <input 
+                                                required
+                                                value={reportTitle}
+                                                onChange={(e) => setReportTitle(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                                placeholder="Ex: Conciliação Bancária - Abril"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Referência (Mês/Ano)</label>
+                                            <input 
+                                                required
+                                                value={reportPeriod}
+                                                onChange={(e) => setReportPeriod(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                                placeholder="Abril 2026"
+                                            />
+                                        </div>
+                                        
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Arquivo (PDF ou Imagem)</label>
+                                            <div className="relative h-32 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-all cursor-pointer group">
+                                                <input 
+                                                    type="file" 
+                                                    accept=".pdf,image/*"
+                                                    onChange={(e) => {
+                                                        const files = Array.from(e.target.files || []);
+                                                        setFilesToUpload(files);
+                                                    }}
+                                                    className="absolute inset-0 opacity-0 cursor-pointer"
+                                                />
+                                                <Upload size={24} className="text-slate-300 group-hover:text-primary transition-colors mb-2" />
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                    {filesToUpload.length > 0 ? `${filesToUpload[0].name}` : 'Arraste ou clique para enviar'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <Button 
+                                            type="submit"
+                                            disabled={saving}
+                                            className="w-full bg-primary text-white rounded-xl text-[10px] font-black uppercase py-4 shadow-xl shadow-primary/20"
+                                        >
+                                            {saving ? <Loader2 size={16} className="animate-spin" /> : 'Publicar Documento'}
+                                        </Button>
+                                    </form>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+
+                {/* Preview Modal */}
+                <AnimatePresence>
+                    {previewDoc && (
+                        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+                            <motion.div 
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-white w-full max-w-5xl h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col"
+                            >
+                                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                            <FileText size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">{previewDoc.name}</h3>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visualização de Documento</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => {
+                                                const link = document.createElement('a');
+                                                link.href = previewDoc.url;
+                                                link.download = previewDoc.name;
+                                                link.click();
+                                            }}
+                                            className="rounded-xl px-4 text-[10px] font-black uppercase"
+                                        >
+                                            <Upload size={14} className="rotate-180 mr-2" /> Baixar
+                                        </Button>
+                                        <button onClick={() => setPreviewDoc(null)} className="p-2 text-slate-400 hover:text-rose-500">
+                                            <X size={24} />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 bg-slate-100 relative">
+                                    {previewDoc.url.includes('application/pdf') || previewDoc.name.toLowerCase().endsWith('.pdf') ? (
+                                        <iframe src={previewDoc.url} className="w-full h-full border-none" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center p-8">
+                                            <img src={previewDoc.url} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" />
+                                        </div>
+                                    )}
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
+            </Card>
+        );
+    }
+
+    return (
+        <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                        <Users size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Clientes</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Selecione um cliente para enviar relatórios</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-64">
+                        <input 
+                            type="text"
+                            placeholder="Buscar cliente..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                        />
+                        <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+                    </div>
+                    <Button 
+                        onClick={() => setIsModalOpen(true)}
+                        className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20 shrink-0"
+                    >
+                        <Plus size={16} className="mr-2" /> Novo Cliente
+                    </Button>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                {loading ? (
+                    <div className="py-12 flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="animate-spin text-primary" size={24} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Buscando clientes...</p>
+                    </div>
+                ) : filteredClients.length === 0 ? (
+                    <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
+                        <Users className="mx-auto text-slate-300 mb-2" size={32} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum cliente encontrado</p>
+                    </div>
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        {filteredClients.map((c) => (
+                            <motion.div 
+                                layout
+                                key={c.id}
+                                whileHover={{ x: 4 }}
+                                onClick={() => setSelectedClient(c)}
+                                className="p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all cursor-pointer group flex items-center justify-between gap-4"
+                            >
+                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shadow-inner shrink-0">
+                                        <User size={20} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{c.name}</h4>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">{c.companyName || 'Empresa Própria'}</p>
+                                    </div>
+                                </div>
+                                
+                                <div className="flex items-center gap-8 px-4 border-l border-slate-50">
+                                    <div className="flex flex-col min-w-[80px]">
+                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Plano Ativo</span>
+                                        <span className="text-[9px] font-black text-primary uppercase">{c.planId || 'Essencial'}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-primary font-black text-[9px] uppercase tracking-widest whitespace-nowrap opacity-60 group-hover:opacity-100 transition-opacity">
+                                        Gerenciar <ChevronRight size={12} />
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Create Client Modal */}
+            <AnimatePresence>
+                {isModalOpen && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
+                        >
+                            <div className="p-8 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                            <UserPlus size={20} />
+                                        </div>
+                                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Criação de Cliente</h3>
+                                    </div>
+                                    <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-900">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <form onSubmit={handleSaveClient} className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
+                                        <input 
+                                            required
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                            placeholder="João Silva"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Razão Social</label>
+                                        <input 
+                                            value={company}
+                                            onChange={(e) => setCompany(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                            placeholder="Sua Empresa LTDA"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Contato</label>
+                                        <input 
+                                            required
+                                            type="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                            placeholder="cliente@email.com"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vincular Plano</label>
+                                        <select 
+                                            value={planId}
+                                            onChange={(e) => setPlanId(e.target.value)}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none"
+                                        >
+                                            <option value="essencial">ESSENCIAL</option>
+                                            <option value="profissional">PROFISSIONAL</option>
+                                            <option value="premium">PREMIUM</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Limite de Lançamentos</label>
+                                        <input 
+                                            type="number"
+                                            value={entriesLimit}
+                                            onChange={(e) => setEntriesLimit(Number(e.target.value))}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
+                                            placeholder="Ex: 50 (0 = padrão do plano)"
+                                        />
+                                    </div>
+
+                                    <Button 
+                                        type="submit"
+                                        disabled={saving}
+                                        className="w-full bg-primary text-white rounded-xl text-[10px] font-black uppercase py-4 shadow-xl shadow-primary/20 mt-4"
+                                    >
+                                        {saving ? <Loader2 size={16} className="animate-spin" /> : 'Cadastrar Cliente'}
+                                    </Button>
+                                </form>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </Card>
+    );
+};
+
+// Admin Plan & Features Management Component
+const PlanFeaturesManagement = ({ isAdmin, user }: { isAdmin: boolean, user: any }) => {
+    const [plans, setPlans] = useState<any>({
+        essencial: { level: 1, label: 'Essencial', price: 400, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'] },
+        profissional: { level: 2, label: 'Profissional', price: 800, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
+        premium: { level: 3, label: 'Premium', price: 1200, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
+    });
+    const [differentialPhrase, setDifferentialPhrase] = useState('Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.');
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+
+    useEffect(() => {
+        if (!isAdmin) return;
+        const path = 'system_configs/plans_config';
+        const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                if (data.plans) setPlans(data.plans);
+                if (data.differentialPhrase) setDifferentialPhrase(data.differentialPhrase);
+            }
+            setLoading(false);
+        }, (error) => {
+            console.error("Error listening to plans config:", error);
+            handleFirestoreError(error, OperationType.GET, path);
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [isAdmin]);
+
+    const handleSave = async () => {
+        setSaving(true);
+        const saveToast = toast.loading("Salvando configurações...");
+        try {
+            // Create a deep copy to avoid mutations
+            const plansToSave = JSON.parse(JSON.stringify(plans));
+            
+            // Get current config for price comparison
+            const currentSnap = await getDoc(doc(db, 'system_configs', 'plans_config'));
+            const currentData = currentSnap.exists() ? currentSnap.data().plans : {};
+            
+            Object.keys(plansToSave).forEach(key => {
+                const oldPrice = (currentData && currentData[key]) ? currentData[key].price : undefined;
+                const newPrice = plansToSave[key].price;
+                
+                if (oldPrice !== undefined && oldPrice !== newPrice) {
+                    plansToSave[key].previousPrice = oldPrice;
+                    plansToSave[key].priceUpdatedAt = new Date().toISOString();
+                } else if (currentData && currentData[key]?.priceUpdatedAt) {
+                    plansToSave[key].previousPrice = currentData[key].previousPrice;
+                    plansToSave[key].priceUpdatedAt = currentData[key].priceUpdatedAt;
+                }
+                
+                // Safety check: ensure entriesLimit is saved as a number
+                if (plansToSave[key].entriesLimit !== undefined) {
+                    plansToSave[key].entriesLimit = Number(plansToSave[key].entriesLimit) || 0;
+                }
+            });
+
+            // Ensure the document structure is exactly as expected
+            const configPayload = {
+                plans: plansToSave,
+                differentialPhrase: differentialPhrase,
+                updatedAt: serverTimestamp(),
+                updatedBy: user?.uid
+            };
+
+            await setDoc(doc(db, 'system_configs', 'plans_config'), configPayload);
+            toast.success("Plano atualizado com sucesso!", { id: saveToast });
+        } catch (error: any) {
+            console.error("Error saving plans config:", error);
+            const errorMessage = error.message || 'Erro de conexão';
+            toast.error(`Falha ao salvar: ${errorMessage}`, { id: saveToast });
+            handleFirestoreError(error, OperationType.UPDATE, 'system_configs/plans_config');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const toggleReport = (planKey: string, reportName: string) => {
+        const currentReports = [...plans[planKey].reports];
+        const index = currentReports.indexOf(reportName);
+        
+        if (index > -1) {
+            currentReports.splice(index, 1);
+        } else {
+            currentReports.push(reportName);
+        }
+
+        setPlans({
+            ...plans,
+            [planKey]: {
+                ...plans[planKey],
+                reports: currentReports
+            }
+        });
+    };
+
+    const allReports = [
+        '📅 Minha Agenda de Contas',
+        '🔄 Conciliação Bancária',
+        '📈 DRE Gerencial',
+        '💰 Fluxo de Caixa',
+        '📝 Relatório Mensal',
+        '🎯 Dashboards'
+    ];
+
+    return (
+        <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5 transition-all hover:shadow-slate-200/10">
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                        <Settings size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Planos</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Configure os relatórios por plano</p>
+                    </div>
+                </div>
+                <Button 
+                    onClick={handleSave} 
+                    disabled={saving || loading}
+                    className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20 transition-all hover:translate-y-[-2px]"
+                >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <><Save size={16} className="mr-2" /> Salvar Alterações</>}
+                </Button>
+            </div>
+
+            <div className="bg-white border border-slate-100 rounded-[2rem] p-8 mb-8 shadow-sm">
+                <div className="flex items-center gap-4 mb-6">
+                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                        <Rocket size={20} />
+                    </div>
+                    <div>
+                        <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">Frase Diferencial</h3>
+                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Aparece na parte inferior da página de planos do cliente</p>
+                    </div>
+                </div>
+                <textarea 
+                    value={differentialPhrase}
+                    onChange={(e) => setDifferentialPhrase(e.target.value)}
+                    placeholder="Digite a frase que aparecerá abaixo da tabela de planos..."
+                    className="w-full h-32 bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all resize-none shadow-inner"
+                />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {Object.keys(plans)
+                    .sort((a, b) => (plans[a].level || 0) - (plans[b].level || 0))
+                    .map((planKey) => (
+                    <div key={planKey} className="space-y-4 p-6 bg-slate-50/50 rounded-3xl border border-slate-100">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">{plans[planKey].label}</h3>
+                            <span className="text-[8px] font-black text-primary uppercase tracking-[0.2em] bg-primary/5 px-2 py-1 rounded-lg">Nível {plans[planKey].level}</span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Valor Mensal (R$)</label>
+                            <input 
+                                type="number"
+                                value={plans[planKey].price || 0}
+                                onChange={(e) => setPlans({
+                                    ...plans,
+                                    [planKey]: {
+                                        ...plans[planKey],
+                                        price: Number(e.target.value)
+                                    }
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                placeholder="0,00"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Lançamentos Mensais (0 = ILIM.)</label>
+                            <input 
+                                type="number"
+                                value={plans[planKey].entriesLimit || 0}
+                                onChange={(e) => setPlans({
+                                    ...plans,
+                                    [planKey]: {
+                                        ...plans[planKey],
+                                        entriesLimit: Number(e.target.value)
+                                    }
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                placeholder="Ex: 50"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome de Exibição</label>
+                            <input 
+                                type="text"
+                                value={plans[planKey].label || ''}
+                                onChange={(e) => setPlans({
+                                    ...plans,
+                                    [planKey]: {
+                                        ...plans[planKey],
+                                        label: e.target.value
+                                    }
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                placeholder="Ex: Essencial — Operação"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">WhatsApp de Suporte</label>
+                            <input 
+                                type="text"
+                                value={plans[planKey].whatsapp || ''}
+                                onChange={(e) => setPlans({
+                                    ...plans,
+                                    [planKey]: {
+                                        ...plans[planKey],
+                                        whatsapp: e.target.value
+                                    }
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                placeholder="Ex: 5511999999999"
+                            />
+                            <p className="text-[8px] text-slate-400 font-medium ml-1">Apenas números com DDD (ex: 5511999999999)</p>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Slogan / Tagline</label>
+                            <input 
+                                type="text"
+                                value={plans[planKey].tagline || ''}
+                                onChange={(e) => setPlans({
+                                    ...plans,
+                                    [planKey]: {
+                                        ...plans[planKey],
+                                        tagline: e.target.value
+                                    }
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
+                                placeholder="Ex: Organização e rotina"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between px-1 mb-2">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Relatórios Disponíveis</p>
+                                {planKey === 'essencial' && (
+                                    <span className="text-[8px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded-full uppercase tracking-tighter">Fixo: Conciliação</span>
+                                )}
+                            </div>
+                            {allReports.map((report) => {
+                                const isEnabled = (plans[planKey].reports || []).includes(report);
+                                // Conciliação Bancária is mandatory for all plans according to user request
+                                const isMandatory = normalizeString(report).includes('conciliacao');
+                                
+                                return (
+                                    <button
+                                        key={report}
+                                        onClick={() => !isMandatory && toggleReport(planKey, report)}
+                                        className={cn(
+                                            "w-full flex items-center justify-between p-3 rounded-xl text-[10px] font-black uppercase transition-all border",
+                                            (isEnabled || isMandatory)
+                                                ? "bg-white border-primary/20 text-slate-900 shadow-sm" 
+                                                : "bg-slate-100/50 border-transparent text-slate-400 opacity-60 hover:opacity-100",
+                                            isMandatory && "cursor-default"
+                                        )}
+                                    >
+                                        <span className="truncate mr-2">{report}</span>
+                                        <div className={cn(
+                                            "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
+                                            (isEnabled || isMandatory) ? "bg-primary text-white" : "bg-slate-200"
+                                        )}>
+                                            {(isEnabled || isMandatory) && <CheckCircle2 size={10} />}
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-100 space-y-3">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vantagens (Site)</p>
+                            <div className="space-y-2">
+                                {(plans[planKey].features || []).map((feature: string, idx: number) => (
+                                    <div key={idx} className="flex gap-2">
+                                        <input 
+                                            value={feature}
+                                            onChange={(e) => {
+                                                const newFeatures = [...(plans[planKey].features || [])];
+                                                newFeatures[idx] = e.target.value;
+                                                setPlans({
+                                                    ...plans,
+                                                    [planKey]: { ...plans[planKey], features: newFeatures }
+                                                });
+                                            }}
+                                            className="flex-1 bg-white border border-slate-100 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-600 outline-none"
+                                        />
+                                        <button 
+                                            onClick={() => {
+                                                const newFeatures = (plans[planKey].features || []).filter((_: any, i: number) => i !== idx);
+                                                setPlans({
+                                                    ...plans,
+                                                    [planKey]: { ...plans[planKey], features: newFeatures }
+                                                });
+                                            }}
+                                            className="p-1 text-slate-300 hover:text-red-400 transition-colors"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                ))}
+                                <button 
+                                    onClick={() => {
+                                        const newFeatures = [...(plans[planKey].features || []), "Nova Vantagem"];
+                                        setPlans({
+                                            ...plans,
+                                            [planKey]: { ...plans[planKey], features: newFeatures }
+                                        });
+                                    }}
+                                    className="w-full py-1.5 border border-dashed border-slate-200 rounded-lg text-[8px] font-black text-slate-400 uppercase hover:text-primary hover:border-primary/20 transition-all"
+                                >
+                                    + Adicionar Vantagem
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="bg-amber-50 rounded-2xl p-4 flex gap-3 border border-amber-100">
+                <AlertCircle className="text-amber-500 shrink-0" size={18} />
+                <p className="text-[10px] font-bold text-amber-900 uppercase tracking-tight leading-relaxed">
+                    Atenção: Estas configurações alteram o acesso de todos os clientes em tempo real de acordo com o plano vinculado ao perfil deles.
+                </p>
+            </div>
+        </Card>
+    );
+};
+
+
+// Utility function for plan prices
+const getPlanPrice = (planId?: string, paymentDate?: Date, plansConfig?: any) => {
+    const planKey = planId?.toLowerCase();
+    if (plansConfig && planKey && plansConfig[planKey]) {
+        const plan = plansConfig[planKey];
+        if (plan.priceUpdatedAt && plan.previousPrice !== undefined && paymentDate) {
+            const updatedAt = plan.priceUpdatedAt.toDate ? plan.priceUpdatedAt.toDate() : new Date(plan.priceUpdatedAt);
+            if (paymentDate < updatedAt) return plan.previousPrice;
+        }
+        return plan.price;
+    }
+    if (planKey === 'essencial') return 400;
+    if (planKey === 'profissional') return 800;
+    if (planKey === 'premium') return 1200;
+    return 400;
+};
+
+// Admin Payment Management Component (Top Level)
+const AdminPaymentsCard = () => {
+    const { isAdmin, plansConfig } = useAuth();
+    const { isPreviewMode } = useClient();
+    const [clientsWithPayments, setClientsWithPayments] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
+
+    useEffect(() => {
+        if (!isAdmin) return;
+
+        setLoading(true);
+        const clientsQuery = query(collection(db, 'userProfiles'), where('role', '==', 'client'));
+        const unsubscribeClients = onSnapshot(clientsQuery, (clientsSnap) => {
+            const clientsList = clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            const paymentsQuery = query(collection(db, 'payments'), where('month', '==', selectedMonth));
+            const unsubscribePayments = onSnapshot(paymentsQuery, (paymentsSnap) => {
+                const paymentsByClient = paymentsSnap.docs.reduce((acc: any, doc) => {
+                    acc[doc.data().clientId] = doc.data();
+                    return acc;
+                }, {});
+
+                const combined = clientsList.map(c => ({
+                    ...c,
+                    paymentStatus: paymentsByClient[c.id]?.status || 'pendente',
+                    paymentId: paymentsByClient[c.id]?.id
+                }));
+
+                setClientsWithPayments(combined);
+                setLoading(false);
+            }, (error) => {
+                console.error("Error listening to payments:", error);
+                handleFirestoreError(error, OperationType.GET, 'payments');
+                setLoading(false);
+            });
+
+            return () => unsubscribePayments();
+        }, (error) => {
+            console.error("Error listening to clients:", error);
+            handleFirestoreError(error, OperationType.GET, 'userProfiles');
+            setLoading(false);
+        });
+
+        return () => unsubscribeClients();
+    }, [isAdmin, selectedMonth]);
+
+    const toggleBlock = async (client: any) => {
+        const newBlockStatus = !client.isBlocked;
+        try {
+            await updateDoc(doc(db, 'userProfiles', client.id), {
+                isBlocked: newBlockStatus,
+                status: newBlockStatus ? 'Inativo' : 'Ativo',
+                updatedAt: serverTimestamp()
+            });
+        } catch (error) {
+            console.error("Error toggling block:", error);
+        }
+    };
+
+    const togglePayment = async (client: any) => {
+        const newStatus = client.paymentStatus === 'pago' ? 'pendente' : 'pago';
+        const paymentId = `${client.id}_${selectedMonth}`;
+        const refDate = new Date(selectedMonth + '-02'); 
+
+        try {
+            await setDoc(doc(db, 'payments', paymentId), {
+                clientId: client.id,
+                clientName: client.name || 'Cliente',
+                month: selectedMonth,
+                amount: client.monthlyValue || getPlanPrice(client.planId, refDate, plansConfig),
+                status: newStatus,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (error) {
+            console.error("Error updating payment:", error);
+        }
+    };
+
+    const refDate = new Date(selectedMonth + '-02');
+    const totals = {
+        paid: clientsWithPayments.filter(c => c.paymentStatus === 'pago').length,
+        pending: clientsWithPayments.filter(c => c.paymentStatus === 'pendente').length,
+        total: clientsWithPayments.length,
+        revenue: clientsWithPayments.filter(c => c.paymentStatus === 'pago').reduce((acc, c) => acc + (c.monthlyValue || getPlanPrice(c.planId, refDate, plansConfig)), 0)
+    };
+
+    const monthYearLabel = new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+    return (
+        <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5 overflow-hidden">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                        <TrendingUp size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Mensalidades</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Controle de pagamentos BPO Financeiro</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2">
+                    <input 
+                        type="month" 
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                    />
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Recebido</p>
+                    <p className="text-sm font-black text-emerald-600">{formatCurrency(totals.revenue)}</p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagos</p>
+                    <p className="text-sm font-black text-slate-900">{totals.paid} <span className="text-slate-400 text-[10px]">/{totals.total}</span></p>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pendentes</p>
+                    <p className="text-sm font-black text-amber-500">{totals.pending}</p>
+                </div>
+                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+                    <p className="text-[8px] font-black text-primary uppercase tracking-widest mb-1">Mês Ref.</p>
+                    <p className="text-[10px] font-black text-slate-900 uppercase">{monthYearLabel}</p>
+                </div>
+            </div>
+
+            <div className="space-y-3">
+                <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Listagem de Clientes</h3>
+                {loading ? (
+                    <div className="py-12 flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="animate-spin text-primary" size={24} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</p>
+                    </div>
+                ) : clientsWithPayments.length === 0 ? (
+                    <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
+                        <Users className="mx-auto text-slate-300 mb-2" size={32} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum cliente cadastrado</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-3">
+                        {clientsWithPayments.map((client) => (
+                            <motion.div 
+                                layout
+                                key={client.id}
+                                className={cn(
+                                    "flex items-center justify-between p-4 bg-white border rounded-2xl transition-all group",
+                                    client.paymentStatus === 'pago' ? "border-emerald-100 bg-emerald-50/10" : "border-slate-100"
+                                )}
+                            >
+                                <div className="flex items-center gap-4 min-w-0">
+                                    <div className={cn(
+                                        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
+                                        client.paymentStatus === 'pago' ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400 group-hover:bg-slate-200"
+                                    )}>
+                                        <User size={18} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight truncate">{client.name || 'Cliente Sem Nome'}</h4>
+                                        <div className="flex items-center gap-2 mt-0.5">
+                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[100px]">{client.planId || 'Plano não definido'}</span>
+                                            <div className="w-1 h-1 rounded-full bg-slate-200" />
+                                            <span className="text-[8px] font-black text-primary uppercase tracking-widest">{formatCurrency(client.monthlyValue || getPlanPrice(client.planId, refDate, plansConfig))}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4">
+                                    <div className="text-right hidden sm:block">
+                                        <span className={cn(
+                                            "text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-full",
+                                            client.paymentStatus === 'pago' ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-600"
+                                        )}>
+                                            {client.paymentStatus === 'pago' ? 'Liquidado' : 'Pendente'}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button 
+                                            onClick={() => toggleBlock(client)}
+                                            variant="ghost"
+                                            title={client.isBlocked ? "Desbloquear Acesso" : "Bloquear por falta de pagamento"}
+                                            className={cn(
+                                                "rounded-xl h-10 w-10 p-0 flex items-center justify-center transition-all border",
+                                                client.isBlocked 
+                                                    ? "bg-rose-500 text-white border-rose-600" 
+                                                    : "bg-slate-50 text-slate-400 hover:text-rose-500 border-slate-100"
+                                            )}
+                                        >
+                                            {client.isBlocked ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
+                                        </Button>
+                                        <Button 
+                                            onClick={() => togglePayment(client)}
+                                            variant="ghost"
+                                            className={cn(
+                                                "rounded-xl h-10 w-10 p-0 flex items-center justify-center transition-all",
+                                                client.paymentStatus === 'pago' 
+                                                    ? "bg-emerald-500 text-white hover:bg-emerald-600" 
+                                                    : "bg-slate-100 text-slate-400 hover:bg-primary/10 hover:text-primary"
+                                            )}
+                                        >
+                                            <CheckCircle2 size={20} />
+                                        </Button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </Card>
+    );
+};
+
+// Admin Client Access Management Component (Top Level)
+const ClientAccessManagement = () => {
+    const { isAdmin, sendPasswordResetEmail } = useAuth();
+    const [usersList, setUsersList] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isInviting, setIsInviting] = useState(false);
     const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
     const [inviteData, setInviteData] = useState({ email: '', name: '', plan: 'essencial' });
+
+    useEffect(() => {
+        if (!isAdmin) return;
+        setLoading(true);
+        const q = query(collection(db, 'userProfiles'), where('role', '==', 'client'));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setUsersList(list);
+            setLoading(false);
+        }, (error) => {
+            console.error("Error loading users:", error);
+            handleFirestoreError(error, OperationType.GET, 'userProfiles');
+            setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [isAdmin]);
+
+    const handleToggleBlock = async (client: any) => {
+        const newBlockStatus = !client.isBlocked;
+        try {
+            await updateDoc(doc(db, 'userProfiles', client.id), {
+                isBlocked: newBlockStatus,
+                status: newBlockStatus ? 'Inativo' : 'Ativo',
+                updatedAt: serverTimestamp()
+            });
+        } catch (error) {
+            console.error("Error toggling block:", error);
+        }
+    };
+
+    const handleResetPassword = async (email: string) => {
+        try {
+            await sendPasswordResetEmail(email);
+            alert(`Um link de redefinição de senha foi enviado para ${email}. Por favor, peça ao cliente para verificar a caixa de entrada e a pasta de SPAM.`);
+        } catch (error: any) {
+            console.error("Error sending reset email:", error);
+            alert(error.message || `Erro ao enviar e-mail de redefinição.`);
+        }
+    };
+
+    const handleShareApp = () => {
+        const url = window.location.origin;
+        const text = `Olá! Comece a usar nossa plataforma Fluxo Inteligente para gestão financeira. Acesse: ${url}`;
+        
+        if (navigator.share) {
+            navigator.share({
+                title: 'Fluxo Inteligente',
+                text: text,
+                url: url,
+            }).catch(() => {
+                navigator.clipboard.writeText(url);
+                alert("Link do aplicativo copiado!");
+            });
+        } else {
+            navigator.clipboard.writeText(url);
+            alert("Link do aplicativo copiado para a área de transferência!");
+        }
+    };
+
+    const handleInviteUser = async () => {
+        if (!inviteData.email || !inviteData.name) {
+            alert("Por favor, preencha nome e e-mail.");
+            return;
+        }
+        setIsInviting(true);
+        try {
+            const clientId = `client_${Date.now()}`;
+            const newClient = {
+                uid: clientId,
+                name: inviteData.name,
+                email: inviteData.email,
+                planId: inviteData.plan,
+                role: 'client',
+                status: 'Ativo',
+                createdAt: serverTimestamp(),
+            };
+            await setDoc(doc(db, 'userProfiles', clientId), newClient);
+            
+            alert(`Configurações preparadas para ${inviteData.name}. Quando o usuário se cadastrar com o e-mail ${inviteData.email}, ele já terá este plano.`);
+            setIsInviteModalOpen(false);
+            setInviteData({ email: '', name: '', plan: 'essencial' });
+        } catch (err: any) {
+            console.error(err);
+            alert(`Erro ao criar convite: ${err.message}`);
+        } finally {
+            setIsInviting(false);
+        }
+    };
+
+    const filteredUsers = usersList.filter(u => 
+        u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+        <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                        <Users size={20} />
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Acessos</h2>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Controle logins, senhas e bloqueios</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                    <Button 
+                        type="button"
+                        onClick={handleShareApp}
+                        variant="ghost"
+                        className="bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest h-10 hover:bg-emerald-100"
+                    >
+                        <Share2 size={14} className="mr-2" /> Compartilhar Link
+                    </Button>
+                    <div className="relative flex-1 md:w-64">
+                        <input 
+                            type="text"
+                            placeholder="Buscar usuário..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                        />
+                        <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
+                    </div>
+                    <Button 
+                        onClick={() => setIsInviteModalOpen(true)}
+                        className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20 shrink-0"
+                    >
+                        <Plus size={16} className="mr-2" /> Novo Acesso
+                    </Button>
+                </div>
+            </div>
+
+            <div className="space-y-4">
+                {loading ? (
+                    <div className="py-12 flex flex-col items-center justify-center gap-3">
+                        <Loader2 className="animate-spin text-primary" size={24} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Carregando usuários...</p>
+                    </div>
+                ) : filteredUsers.length === 0 ? (
+                    <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
+                        <AlertCircle className="mx-auto text-slate-300 mb-2" size={32} />
+                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum usuário encontrado</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 gap-4">
+                        {filteredUsers.map((u) => (
+                            <motion.div 
+                                layout
+                                key={u.id}
+                                className={cn(
+                                    "flex flex-col md:flex-row md:items-center justify-between p-5 bg-white border rounded-2xl transition-all group gap-4",
+                                    u.isBlocked ? "border-red-100 bg-red-50/10" : "border-slate-100"
+                                )}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={cn(
+                                        "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-sm",
+                                        u.isBlocked ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary"
+                                    )}>
+                                        <User size={20} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{u.name || 'Sem Nome'}</h4>
+                                            {u.isBlocked && (
+                                                <span className="px-1.5 py-0.5 bg-red-500 text-white text-[7px] font-black uppercase rounded-full">Bloqueado</span>
+                                            )}
+                                        </div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.email}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[8px] font-black text-primary uppercase tracking-widest border border-primary/20 px-1.5 py-0.5 rounded-md">
+                                                {u.planId || 'Sem Plano'}
+                                            </span>
+                                            {u.companyName && (
+                                                <>
+                                                    <div className="w-1 h-1 rounded-full bg-slate-200" />
+                                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest truncate">{u.companyName}</span>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 self-end md:self-center">
+                                    <Button 
+                                        onClick={() => handleResetPassword(u.email)}
+                                        variant="ghost"
+                                        title="Enviar link de redefinição de senha"
+                                        className="h-10 px-4 bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 rounded-xl border border-slate-100 text-[9px] font-black uppercase tracking-widest"
+                                    >
+                                        <LockIcon size={14} className="mr-2" /> Redefinir Senha
+                                    </Button>
+                                    <Button 
+                                        onClick={() => handleToggleBlock(u)}
+                                        variant="ghost"
+                                        className={cn(
+                                            "rounded-xl h-10 px-4 flex items-center justify-center transition-all border text-[9px] font-black uppercase tracking-widest",
+                                            u.isBlocked 
+                                                ? "bg-rose-500 text-white border-rose-600 hover:bg-rose-600" 
+                                                : "bg-slate-50 text-slate-400 hover:text-rose-500 border-slate-100"
+                                        )}
+                                    >
+                                        {u.isBlocked ? <><UnlockIcon size={14} className="mr-2" /> Desbloquear</> : <><LockIcon size={14} className="mr-2" /> Bloquear Login</>}
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            <AnimatePresence>
+                {isInviteModalOpen && (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                        <motion.div 
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
+                        >
+                            <div className="p-8 space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
+                                            <Users size={20} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Novo Acesso de Cliente</h3>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Crie uma conta para seu cliente</p>
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setIsInviteModalOpen(false)} className="text-slate-400 hover:text-slate-900">
+                                        <X size={20} />
+                                    </button>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome do Cliente</label>
+                                        <input 
+                                            value={inviteData.name}
+                                            onChange={(e) => setInviteData({...inviteData, name: e.target.value})}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                                            placeholder="Ex: João Silva"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Acesso</label>
+                                        <input 
+                                            value={inviteData.email}
+                                            onChange={(e) => setInviteData({...inviteData, email: e.target.value})}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
+                                            placeholder="cliente@email.com"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vincular Plano</label>
+                                        <select 
+                                            value={inviteData.plan}
+                                            onChange={(e) => setInviteData({...inviteData, plan: e.target.value})}
+                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all appearance-none"
+                                        >
+                                            <option value="essencial">ESSENCIAL</option>
+                                            <option value="profissional">PROFISSIONAL</option>
+                                            <option value="premium">PREMIUM</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <Button 
+                                    onClick={handleInviteUser}
+                                    disabled={isInviting}
+                                    className="w-full bg-primary text-white rounded-xl text-[10px] font-black uppercase py-4 shadow-xl shadow-primary/20"
+                                >
+                                    {isInviting ? <Loader2 size={16} className="animate-spin" /> : 'Confirmar e Enviar Instruções'}
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        </Card>
+    );
+};
+
+export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string) => void, onBack?: () => void }) => {
+    const { profile, user, isAdmin, plansConfig, updateProfile, updateEmail, updatePassword } = useAuth();
+    const { isPreviewMode, selectedClientId } = useClient();
+    const [isSaving, setIsSaving] = useState(false);
+    const [isSearchingCep, setIsSearchingCep] = useState(false);
+    const [clients, setClients] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (!isAdmin) return;
+        const q = query(
+            collection(db, 'userProfiles'), 
+            where('role', '==', 'client')
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const clientList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data(),
+            }));
+            
+            const sortedClients = clientList.sort((a: any, b: any) => {
+                const nameA = (a.name || '').toLowerCase();
+                const nameB = (b.name || '').toLowerCase();
+                return nameA.localeCompare(nameB);
+            });
+            
+            setClients(sortedClients);
+        }, (error) => {
+            console.error("Error loading clients:", error);
+            handleFirestoreError(error, OperationType.GET, 'userProfiles');
+        });
+
+        return () => unsubscribe();
+    }, [isAdmin]);
+
+    const [activeSubTab, setActiveSubTab] = useState<'general' | 'security'>('general');
+    const [adminActiveTab, setAdminActiveTab] = useState<'payments' | 'clients' | 'plans' | 'users' | 'company' | 'lgpd'>('clients');
     const [pendingPhoto, setPendingPhoto] = useState<string | null>(null);
     const [isPhotoPreviewOpen, setIsPhotoPreviewOpen] = useState(false);
     const [photoZoom, setPhotoZoom] = useState(1);
@@ -379,29 +2287,6 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
         }
     };
 
-    const getPlanPrice = (planId?: string, paymentDate?: Date) => {
-        const planKey = planId?.toLowerCase();
-        if (plansConfig && planKey && plansConfig[planKey]) {
-            const plan = plansConfig[planKey];
-            
-            // Se houver data de atualização de preço, verifica se o pagamento é anterior
-            if (plan.priceUpdatedAt && plan.previousPrice !== undefined && paymentDate) {
-                const updatedAt = plan.priceUpdatedAt.toDate ? plan.priceUpdatedAt.toDate() : new Date(plan.priceUpdatedAt);
-                
-                // Se a data do pagamento for anterior à mudança, usa o preço antigo
-                if (paymentDate < updatedAt) {
-                    return plan.previousPrice;
-                }
-            }
-            return plan.price;
-        }
-        // Fallback defaults
-        if (planKey === 'essencial') return 400;
-        if (planKey === 'profissional') return 800;
-        if (planKey === 'premium') return 1200;
-        return 400;
-    };
-
     // Simulated payment history based on registration date
     const registrationDate = profile?.createdAt?.toDate ? profile.createdAt.toDate() : new Date();
     const today = new Date();
@@ -417,7 +2302,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             id: currentMonth.getTime().toString(),
             month: currentMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
             date: dueDate.toLocaleDateString('pt-BR'),
-            amount: profile?.monthlyValue || getPlanPrice(profile?.planId, dueDate),
+            amount: profile?.monthlyValue || getPlanPrice(profile?.planId, dueDate, plansConfig),
             status: 'pago',
             method: 'Cartão •••• 4412'
         });
@@ -441,1811 +2326,17 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
         renovation: nextDueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
     };
 
-    // Admin Company Data Management
-    const CompanyManagement = () => {
-        const [companyData, setCompanyData] = useState<any>({
-            name: 'Fluxo Inteligente BPO',
-            cnpj: '',
-            email: 'contato@fluxointeligente.com',
-            phone: '',
-            cep: '',
-            address: '',
-            addressNumber: '',
-            complement: '',
-            neighborhood: '',
-            city: '',
-            state: '',
-            website: 'www.fluxointeligente.com'
-        });
-        const [loading, setLoading] = useState(true);
-        const [saving, setSaving] = useState(false);
-        const [searchingCep, setSearchingCep] = useState(false);
 
-        useEffect(() => {
-            const fetchCompany = async () => {
-                const unsubscribe = onSnapshot(doc(db, 'system_configs', 'company_config'), (docSnap) => {
-                    if (docSnap.exists()) {
-                        setCompanyData(docSnap.data());
-                    }
-                    setLoading(false);
-                });
-                return unsubscribe;
-            };
-            const unsub = fetchCompany();
-            return () => { unsub.then(fn => fn && (typeof fn === 'function' && fn())); };
-        }, []);
 
-        const handleCepSearch = async (cep: string) => {
-            const cleanCep = cep.replace(/\D/g, '');
-            setCompanyData(prev => ({ ...prev, cep: maskCEP(cep) }));
-            
-            if (cleanCep.length === 8) {
-                setSearchingCep(true);
-                try {
-                    const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-                    const data = await response.json();
-                    
-                    if (!data.erro) {
-                        setCompanyData(prev => ({
-                            ...prev,
-                            address: data.logradouro,
-                            neighborhood: data.bairro,
-                            city: data.localidade,
-                            state: data.uf
-                        }));
-                    }
-                } catch (error) {
-                    console.error('Erro ao buscar CEP da empresa:', error);
-                } finally {
-                    setSearchingCep(false);
-                }
-            }
-        };
 
-        const handleSave = async () => {
-            setSaving(true);
-            try {
-                await setDoc(doc(db, 'system_configs', 'company_config'), {
-                    ...companyData,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-                alert("Dados da Fluxo Inteligente atualizados com sucesso!");
-            } catch (error) {
-                console.error("Error saving company data:", error);
-            } finally {
-                setSaving(false);
-            }
-        };
 
-        return (
-            <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                            <Building2 size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Dados da Empresa</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Informações da Fluxo Inteligente</p>
-                        </div>
-                    </div>
-                    <Button 
-                        onClick={handleSave} 
-                        disabled={saving}
-                        className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20"
-                    >
-                        {saving ? <Loader2 size={16} className="animate-spin" /> : 'Salvar Dados'}
-                    </Button>
-                </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Comercial</label>
-                        <input 
-                            value={companyData.name}
-                            onChange={(e) => setCompanyData({...companyData, name: e.target.value})}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CNPJ / CPF</label>
-                        <input 
-                            value={companyData.cnpj}
-                            onChange={(e) => setCompanyData({...companyData, cnpj: maskDocument(e.target.value)})}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                            placeholder="00.000.000/0001-00 ou 000.000.000-00"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">CEP</label>
-                        <div className="relative">
-                            <input 
-                                value={companyData.cep}
-                                onChange={(e) => handleCepSearch(e.target.value)}
-                                maxLength={9}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                placeholder="00000-000"
-                            />
-                            {searchingCep && <Loader2 className="absolute right-3 top-3 animate-spin text-primary" size={16} />}
-                        </div>
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Contato</label>
-                        <input 
-                            value={companyData.email}
-                            onChange={(e) => setCompanyData({...companyData, email: e.target.value})}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                            placeholder="contato@empresa.com"
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Telefone / WhatsApp</label>
-                        <input 
-                            value={companyData.phone}
-                            onChange={(e) => setCompanyData({...companyData, phone: maskPhone(e.target.value)})}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                        />
-                    </div>
-                    <div className="md:col-span-2 space-y-1.5">
-                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Endereço (Logradouro)</label>
-                        <input 
-                            value={companyData.address}
-                            onChange={(e) => setCompanyData({...companyData, address: e.target.value})}
-                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                        />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 md:col-span-2">
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Número</label>
-                            <input 
-                                value={companyData.addressNumber}
-                                onChange={(e) => setCompanyData({...companyData, addressNumber: e.target.value})}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                placeholder="123"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Complemento</label>
-                            <input 
-                                value={companyData.complement}
-                                onChange={(e) => setCompanyData({...companyData, complement: e.target.value})}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                placeholder="Sala 01 / Bloco A"
-                            />
-                        </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 md:col-span-2">
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Bairro</label>
-                            <input 
-                                value={companyData.neighborhood}
-                                onChange={(e) => setCompanyData({...companyData, neighborhood: e.target.value})}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Cidade / UF</label>
-                            <input 
-                                value={`${companyData.city} - ${companyData.state}`}
-                                readOnly
-                                className="w-full bg-slate-50/50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-400 outline-none"
-                            />
-                        </div>
-                    </div>
-                </div>
-                
-                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex items-center gap-3">
-                    <Info size={16} className="text-primary" />
-                    <p className="text-[10px] font-bold text-slate-600 uppercase tracking-tight">Estes dados serão utilizados em relatórios e cabeçalhos automáticos para seus clientes.</p>
-                </div>
-            </Card>
-        );
-    };
 
-    // Admin Payment Management Component (Updated with Blocking)
-    const AdminPaymentsCard = () => {
-        const [clientsWithPayments, setClientsWithPayments] = useState<any[]>([]);
-        const [loading, setLoading] = useState(true);
-        const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().substring(0, 7)); // YYYY-MM
 
-        useEffect(() => {
-            if (!isAdmin) return;
 
-            // Use onSnapshot for real-time updates
-            setLoading(true);
-            const clientsQuery = query(collection(db, 'userProfiles'), where('role', '==', 'client'));
-            const unsubscribeClients = onSnapshot(clientsQuery, (clientsSnap) => {
-                const clientsList = clientsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                const paymentsQuery = query(collection(db, 'payments'), where('month', '==', selectedMonth));
-                const unsubscribePayments = onSnapshot(paymentsQuery, (paymentsSnap) => {
-                    const paymentsByClient = paymentsSnap.docs.reduce((acc: any, doc) => {
-                        acc[doc.data().clientId] = doc.data();
-                        return acc;
-                    }, {});
 
-                    const combined = clientsList.map(c => ({
-                        ...c,
-                        paymentStatus: paymentsByClient[c.id]?.status || 'pendente',
-                        paymentId: paymentsByClient[c.id]?.id
-                    }));
 
-                    setClientsWithPayments(combined);
-                    setLoading(false);
-                }, (error) => {
-                    console.error("Error listening to payments:", error);
-                    handleFirestoreError(error, OperationType.GET, 'payments');
-                    setLoading(false);
-                });
-
-                return () => unsubscribePayments();
-            }, (error) => {
-                console.error("Error listening to clients:", error);
-                handleFirestoreError(error, OperationType.GET, 'userProfiles');
-                setLoading(false);
-            });
-
-            return () => unsubscribeClients();
-        }, [isAdmin, selectedMonth]);
-
-        const toggleBlock = async (client: any) => {
-            const newBlockStatus = !client.isBlocked;
-            try {
-                await updateDoc(doc(db, 'userProfiles', client.id), {
-                    isBlocked: newBlockStatus,
-                    status: newBlockStatus ? 'Inativo' : 'Ativo',
-                    updatedAt: serverTimestamp()
-                });
-            } catch (error) {
-                console.error("Error toggling block:", error);
-            }
-        };
-
-        const togglePayment = async (client: any) => {
-            const newStatus = client.paymentStatus === 'pago' ? 'pendente' : 'pago';
-            const paymentId = `${client.id}_${selectedMonth}`;
-            
-            // Ref para o primeiro dia do mês selecionado para cálculo de preço histórico
-            const refDate = new Date(selectedMonth + '-02'); 
-
-            try {
-                await setDoc(doc(db, 'payments', paymentId), {
-                    clientId: client.id,
-                    clientName: client.name || 'Cliente',
-                    month: selectedMonth,
-                    amount: client.monthlyValue || getPlanPrice(client.planId, refDate),
-                    status: newStatus,
-                    updatedAt: serverTimestamp()
-                }, { merge: true });
-            } catch (error) {
-                console.error("Error updating payment:", error);
-            }
-        };
-
-        const refDate = new Date(selectedMonth + '-02');
-        const totals = {
-            paid: clientsWithPayments.filter(c => c.paymentStatus === 'pago').length,
-            pending: clientsWithPayments.filter(c => c.paymentStatus === 'pendente').length,
-            total: clientsWithPayments.length,
-            revenue: clientsWithPayments.filter(c => c.paymentStatus === 'pago').reduce((acc, c) => acc + (c.monthlyValue || getPlanPrice(c.planId, refDate)), 0)
-        };
-
-        const monthYearLabel = new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-
-        return (
-            <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5 overflow-hidden">
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                            <TrendingUp size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Mensalidades</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Controle de pagamentos BPO Financeiro</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="month" 
-                            value={selectedMonth}
-                            onChange={(e) => setSelectedMonth(e.target.value)}
-                            className="px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                        />
-                    </div>
-                </div>
-
-                {/* Summary View */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Recebido</p>
-                        <p className="text-sm font-black text-emerald-600">{formatCurrency(totals.revenue)}</p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagos</p>
-                        <p className="text-sm font-black text-slate-900">{totals.paid} <span className="text-slate-400 text-[10px]">/{totals.total}</span></p>
-                    </div>
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Pendentes</p>
-                        <p className="text-sm font-black text-amber-500">{totals.pending}</p>
-                    </div>
-                    <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                        <p className="text-[8px] font-black text-primary uppercase tracking-widest mb-1">Mês Ref.</p>
-                        <p className="text-[10px] font-black text-slate-900 uppercase">{monthYearLabel}</p>
-                    </div>
-                </div>
-
-                <div className="space-y-3">
-                    <h3 className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Listagem de Clientes</h3>
-                    {loading ? (
-                        <div className="py-12 flex flex-col items-center justify-center gap-3">
-                            <Loader2 className="animate-spin text-primary" size={24} />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Carregando dados...</p>
-                        </div>
-                    ) : clientsWithPayments.length === 0 ? (
-                        <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
-                            <Users className="mx-auto text-slate-300 mb-2" size={32} />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum cliente cadastrado</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-3">
-                            {clientsWithPayments.map((client) => (
-                                <motion.div 
-                                    layout
-                                    key={client.id}
-                                    className={cn(
-                                        "flex items-center justify-between p-4 bg-white border rounded-2xl transition-all group",
-                                        client.paymentStatus === 'pago' ? "border-emerald-100 bg-emerald-50/10" : "border-slate-100"
-                                    )}
-                                >
-                                    <div className="flex items-center gap-4 min-w-0">
-                                        <div className={cn(
-                                            "w-10 h-10 rounded-xl flex items-center justify-center transition-colors",
-                                            client.paymentStatus === 'pago' ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400 group-hover:bg-slate-200"
-                                        )}>
-                                            <User size={18} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <h4 className="text-xs font-black text-slate-900 uppercase tracking-tight truncate">{client.name || 'Cliente Sem Nome'}</h4>
-                                            <div className="flex items-center gap-2 mt-0.5">
-                                                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[100px]">{client.planId || 'Plano não definido'}</span>
-                                                <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                                <span className="text-[8px] font-black text-primary uppercase tracking-widest">{formatCurrency(client.monthlyValue || getPlanPrice(client.planId, refDate))}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-right hidden sm:block">
-                                            <span className={cn(
-                                                "text-[8px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded-full",
-                                                client.paymentStatus === 'pago' ? "bg-emerald-500 text-white" : "bg-amber-100 text-amber-600"
-                                            )}>
-                                                {client.paymentStatus === 'pago' ? 'Liquidado' : 'Pendente'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button 
-                                                onClick={() => toggleBlock(client)}
-                                                variant="ghost"
-                                                title={client.isBlocked ? "Desbloquear Acesso" : "Bloquear por falta de pagamento"}
-                                                className={cn(
-                                                    "rounded-xl h-10 w-10 p-0 flex items-center justify-center transition-all border",
-                                                    client.isBlocked 
-                                                        ? "bg-rose-500 text-white border-rose-600" 
-                                                        : "bg-slate-50 text-slate-400 hover:text-rose-500 border-slate-100"
-                                                )}
-                                            >
-                                                {client.isBlocked ? <LockIcon size={16} /> : <UnlockIcon size={16} />}
-                                            </Button>
-                                            <Button 
-                                                onClick={() => togglePayment(client)}
-                                                variant="ghost"
-                                                className={cn(
-                                                    "rounded-xl h-10 w-10 p-0 flex items-center justify-center transition-all",
-                                                    client.paymentStatus === 'pago' 
-                                                        ? "bg-emerald-500 text-white hover:bg-emerald-600" 
-                                                        : "bg-slate-100 text-slate-400 hover:bg-primary/10 hover:text-primary"
-                                                )}
-                                            >
-                                                <CheckCircle2 size={20} />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </Card>
-        );
-    };
-
-    // Admin Clients Management
-    const ClientsManagement = () => {
-        const [searchTerm, setSearchTerm] = useState('');
-        const [isModalOpen, setIsModalOpen] = useState(false);
-        const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-        const [loading, setLoading] = useState(true);
-        const [saving, setSaving] = useState(false);
-        const [clients, setClients] = useState<any[]>([]);
-        const [reports, setReports] = useState<any[]>([]);
-
-        // Form states (Client)
-        const [name, setName] = useState('');
-        const [company, setCompany] = useState('');
-        const [email, setEmail] = useState('');
-        const [phone, setPhone] = useState('');
-        const [planId, setPlanId] = useState('essencial');
-        const [entriesLimit, setEntriesLimit] = useState<number>(0);
-        const [selectedClient, setSelectedClient] = useState<any | null>(null);
-        const [currentCategory, setCurrentCategory] = useState<string | null>(null);
-        const [clientSubTab, setClientSubTab] = useState<'reports' | 'config'>('reports');
-
-        // Form states (Report)
-        const [reportTitle, setReportTitle] = useState('');
-        const [reportPeriod, setReportPeriod] = useState('');
-        const [reportCategory, setReportCategory] = useState(REPORT_CATEGORIES[0]);
-        const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
-        const [previewDoc, setPreviewDoc] = useState<{name: string, url: string} | null>(null);
-
-        // Real-time listener for clients
-        useEffect(() => {
-            if (!isAdmin) return;
-            const q = query(
-                collection(db, 'userProfiles'), 
-                where('role', '==', 'client')
-            );
-
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const clientList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                
-                const sortedClients = clientList.sort((a: any, b: any) => {
-                    const nameA = (a.name || '').toLowerCase();
-                    const nameB = (b.name || '').toLowerCase();
-                    return nameA.localeCompare(nameB);
-                });
-
-                setClients(sortedClients);
-                setLoading(false);
-            }, (error) => {
-                console.error('Firestore Clients Error:', error);
-                handleFirestoreError(error, OperationType.LIST, 'userProfiles');
-                setLoading(false);
-            });
-
-            return () => unsubscribe();
-        }, []);
-
-        // Real-time listener for reports of selected client
-        useEffect(() => {
-            if (!selectedClient) {
-                setReports([]);
-                return;
-            }
-
-            const q = query(
-                collection(db, 'reports'),
-                where('clientId', '==', selectedClient.id)
-            );
-
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const reportList = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                }));
-                const sortedReports = reportList.sort((a: any, b: any) => {
-                    const dateA = a.createdAt?.seconds || 0;
-                    const dateB = b.createdAt?.seconds || 0;
-                    return dateB - dateA;
-                });
-                setReports(sortedReports);
-            }, (error) => {
-                handleFirestoreError(error, OperationType.LIST, 'reports');
-            });
-
-            return () => unsubscribe();
-        }, [selectedClient?.id]);
-
-        const handleSaveClient = async (e: React.FormEvent) => {
-            e.preventDefault();
-            if (!name || !email) return;
-
-            setSaving(true);
-            const clientId = `client_${Date.now()}`;
-            const newClient = {
-                uid: clientId, 
-                name,
-                companyName: company,
-                email,
-                phone,
-                planId,
-                entriesLimit: entriesLimit > 0 ? entriesLimit : null,
-                role: 'client',
-                status: 'Ativo',
-                createdAt: serverTimestamp(),
-            };
-
-            try {
-                await setDoc(doc(db, 'userProfiles', clientId), newClient);
-                setIsModalOpen(false);
-                setName('');
-                setCompany('');
-                setEmail('');
-                setPhone('');
-            } catch (error) {
-                handleFirestoreError(error, OperationType.CREATE, `userProfiles/${clientId}`);
-            } finally {
-                setSaving(false);
-            }
-        };
-
-        const handleSaveReport = async (e: React.FormEvent, shouldAddAnother = false) => {
-            e.preventDefault();
-            if (!selectedClient || !reportTitle || !reportPeriod) return;
-            if (filesToUpload.length === 0) {
-                alert('Por favor, anexe pelo menos um documento.');
-                return;
-            }
-
-            setSaving(true);
-            const reportId = `report_${Date.now()}`;
-            
-            try {
-                const totalSize = filesToUpload.reduce((acc, f) => acc + f.size, 0);
-                if (totalSize > 900000) { 
-                    alert('O arquivo é um pouco grande demais. Por favor, tente um arquivo menor que 900KB.');
-                    setSaving(false);
-                    return;
-                }
-
-                const documentPromises = filesToUpload.map(file => {
-                    return new Promise<{name: string, url: string}>((resolve, reject) => {
-                        const reader = new FileReader();
-                        reader.readAsDataURL(file);
-                        reader.onload = () => resolve({
-                            name: file.name,
-                            url: reader.result as string
-                        });
-                        reader.onerror = error => reject(error);
-                    });
-                });
-
-                const dummyDocuments = await Promise.all(documentPromises);
-
-                const newReport = {
-                    clientId: selectedClient.id,
-                    title: reportTitle,
-                    category: reportCategory,
-                    period: reportPeriod,
-                    documents: dummyDocuments,
-                    status: 'published',
-                    createdAt: serverTimestamp(),
-                };
-
-                await setDoc(doc(db, 'reports', reportId), newReport);
-                
-                alert('Relatório publicado com sucesso!');
-                setReportTitle('');
-                setReportPeriod('');
-                setReportCategory(REPORT_CATEGORIES[0]);
-                setFilesToUpload([]);
-
-                if (!shouldAddAnother) {
-                    setIsReportModalOpen(false);
-                }
-            } catch (error) {
-                handleFirestoreError(error, OperationType.CREATE, `reports/${reportId}`);
-            } finally {
-                setSaving(false);
-            }
-        };
-
-        const filteredClients = clients.filter(c => 
-            c.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            c.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-
-        const handleUpdateClientConfig = async () => {
-            if (!selectedClient) return;
-            setSaving(true);
-            try {
-                const clientRef = doc(db, 'userProfiles', selectedClient.id);
-                const updates = {
-                    planId: selectedClient.planId,
-                    entriesLimit: selectedClient.entriesLimit || null,
-                    updatedAt: serverTimestamp()
-                };
-                await updateDoc(clientRef, updates);
-                alert("Configurações do cliente atualizadas!");
-            } catch (error) {
-                console.error("Error updating client:", error);
-                alert("Erro ao atualizar cliente.");
-            } finally {
-                setSaving(false);
-            }
-        };
-
-        if (selectedClient) {
-            const filteredReports = reports.filter(r => {
-                if (!currentCategory || currentCategory === 'Tudo') return true;
-                const reportCat = (r.category || '').toLowerCase().trim();
-                const selectedCat = (currentCategory || '').toLowerCase().trim();
-                return reportCat === selectedCat || reportCat.includes(selectedCat) || selectedCat.includes(reportCat);
-            });
-
-            return (
-                <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5 min-h-[600px]">
-                    <div className="flex items-center justify-between">
-                        <button 
-                            onClick={() => {
-                                if (currentCategory) setCurrentCategory(null);
-                                else setSelectedClient(null);
-                            }}
-                            className="p-3 -ml-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-2xl transition-all no-print bg-white border border-slate-100 shadow-sm active:scale-95"
-                        >
-                            <ChevronLeft size={24} />
-                        </button>
-
-                        <div className="flex flex-col items-end">
-                            <h2 className="text-sm font-black text-slate-900 uppercase tracking-tight">{selectedClient.name}</h2>
-                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{selectedClient.companyName || 'Empresa não definida'}</p>
-                        </div>
-                    </div>
-
-                    {/* Subtabs for Client View */}
-                    <div className="flex items-center gap-4 border-b border-slate-50">
-                        <button 
-                            onClick={() => setClientSubTab('reports')}
-                            className={cn(
-                                "text-[10px] font-black uppercase tracking-widest pb-3 transition-all border-b-2",
-                                clientSubTab === 'reports' ? "text-primary border-primary" : "text-slate-400 border-transparent hover:text-slate-600"
-                            )}
-                        >
-                            Relatórios e Arquivos
-                        </button>
-                        <button 
-                            onClick={() => setClientSubTab('config')}
-                            className={cn(
-                                "text-[10px] font-black uppercase tracking-widest pb-3 transition-all border-b-2",
-                                clientSubTab === 'config' ? "text-primary border-primary" : "text-slate-400 border-transparent hover:text-slate-600"
-                            )}
-                        >
-                            Configurações do Plano
-                        </button>
-                    </div>
-
-                    <div className="space-y-8">
-                        {clientSubTab === 'reports' ? (
-                            <>
-                                {!currentCategory ? (
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Pastas de Relatórios</h3>
-                                            <Button 
-                                                onClick={() => setIsReportModalOpen(true)}
-                                                className="bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-slate-900/10"
-                                            >
-                                                <Plus size={16} className="mr-2" /> Novo Documento
-                                            </Button>
-                                        </div>
-                                        
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                            {REPORT_CATEGORIES.map((cat) => {
-                                                const categoryReports = reports.filter(r => {
-                                                    const reportCat = (r.category || '').toLowerCase().trim();
-                                                    const folderCat = cat.toLowerCase().trim();
-                                                    return reportCat === folderCat || reportCat.includes(folderCat) || folderCat.includes(reportCat);
-                                                });
-                                                const colors = CATEGORY_COLORS[cat] || { bgColor: 'bg-white', borderColor: 'border-slate-100', textColor: 'text-slate-900', iconBg: 'bg-slate-50', iconColor: 'text-slate-400' };
-
-                                                return (
-                                                    <div 
-                                                        key={cat}
-                                                        onClick={() => setCurrentCategory(cat)}
-                                                        className={cn(
-                                                            "group cursor-pointer p-8 border rounded-[2.5rem] transition-all hover:shadow-2xl hover:shadow-slate-200/50 hover:-translate-y-1 relative overflow-hidden",
-                                                            colors.bgColor,
-                                                            colors.borderColor
-                                                        )}
-                                                    >
-                                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/40 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-white/60 transition-colors" />
-                                                        
-                                                        <div className="flex items-center justify-between mb-8">
-                                                            <div className={cn(
-                                                                "w-14 h-14 rounded-2xl flex items-center justify-center transition-all shadow-sm",
-                                                                colors.iconBg,
-                                                                "group-hover:scale-110 group-hover:rotate-3 group-hover:bg-white shadow-inner"
-                                                            )}>
-                                                                <span className="text-2xl">{cat.split(' ')[0]}</span>
-                                                            </div>
-                                                            <div className="w-10 h-10 rounded-2xl bg-white/50 flex items-center justify-center text-slate-300 group-hover:text-primary transition-all">
-                                                                <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-1 relative z-10">
-                                                            <h4 className={cn("font-black uppercase tracking-tight text-base leading-none", colors.textColor)}>
-                                                                {cat.split(' ').slice(1).join(' ') || cat}
-                                                            </h4>
-                                                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] opacity-60">
-                                                                {categoryReports.length === 0 ? 'Pasta Vazia' : `${categoryReports.length} ${categoryReports.length === 1 ? 'arquivo' : 'arquivos'}`}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-
-                                        <button 
-                                            onClick={() => setCurrentCategory('Tudo')}
-                                            className="w-full py-6 border-2 border-dashed border-slate-100 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 hover:text-primary hover:border-primary/20 transition-all bg-slate-50/30"
-                                        >
-                                            Ou visualizar todos os arquivos de uma vez
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-6">
-                                        <div className="flex items-center justify-between px-2">
-                                            <div className="flex items-center gap-3">
-                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/5 rounded-lg text-[9px] font-black text-primary uppercase tracking-widest">
-                                                    <span>Relatórios</span>
-                                                    <ChevronRight size={10} className="text-primary/30" />
-                                                    <span className="text-slate-900">{currentCategory === 'Tudo' ? 'Todos os Arquivos' : currentCategory}</span>
-                                                </div>
-                                                <button onClick={() => setCurrentCategory(null)} className="text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-primary transition-colors underline">Trocar Pasta</button>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                    {filteredReports.length} {filteredReports.length === 1 ? 'Arquivo' : 'Arquivos'}
-                                                </span>
-                                                <Button 
-                                                    size="sm"
-                                                    onClick={() => setIsReportModalOpen(true)}
-                                                    className="bg-primary text-white rounded-xl text-[9px] font-black uppercase px-4 h-8 shadow-lg shadow-primary/20"
-                                                >
-                                                    <Plus size={14} className="mr-1.5" /> Adicionar
-                                                </Button>
-                                            </div>
-                                        </div>
-
-                                        {filteredReports.length === 0 ? (
-                                            <div className="py-20 text-center bg-slate-50/50 rounded-[2rem] border-2 border-dashed border-slate-100 flex flex-col items-center gap-4">
-                                                <FileText className="text-slate-200" size={48} />
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Nenhum documento encontrado nesta pasta</p>
-                                            </div>
-                                        ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                {filteredReports.map((report) => (
-                                                    <div 
-                                                        key={report.id} 
-                                                        className="flex items-center justify-between p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 transition-all group"
-                                                    >
-                                                        <div className="flex items-center gap-4 min-w-0">
-                                                            <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shrink-0">
-                                                                <FileText size={18} />
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{report.title}</h4>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">{report.period}</span>
-                                                                    {currentCategory === 'Tudo' && (
-                                                                        <>
-                                                                            <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                                                            <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest truncate max-w-[100px]">{report.category}</span>
-                                                                        </>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            {report.documents?.map((doc: any, i: number) => (
-                                                                <Button 
-                                                                    key={i}
-                                                                    variant="ghost" 
-                                                                    size="icon" 
-                                                                    onClick={() => setPreviewDoc(doc)}
-                                                                    className="h-8 w-8 text-primary hover:bg-primary/5 rounded-lg transition-all"
-                                                                >
-                                                                    <ExternalLink size={14} />
-                                                                </Button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </>
-                        ) : (
-                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="w-10 h-10 bg-amber-50 text-amber-500 rounded-xl flex items-center justify-center">
-                                        <Settings size={20} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Limites do Cliente</h3>
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Personalize o plano para este cliente específico</p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Plano Base</label>
-                                        <select 
-                                            value={selectedClient.planId || 'essencial'}
-                                            onChange={(e) => setSelectedClient({...selectedClient, planId: e.target.value})}
-                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none font-mono"
-                                        >
-                                            <option value="essencial">ESSENCIAL</option>
-                                            <option value="profissional">PROFISSIONAL</option>
-                                            <option value="premium">PREMIUM</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Limite de Lançamentos (0=Global)</label>
-                                        <input 
-                                            type="number"
-                                            value={selectedClient.entriesLimit || 0}
-                                            onChange={(e) => setSelectedClient({...selectedClient, entriesLimit: Number(e.target.value)})}
-                                            className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                            placeholder="Ex: 100"
-                                        />
-                                        <p className="text-[8px] text-slate-400 font-bold italic px-1">Se definido como 0, usará o limite padrão do plano selecionado.</p>
-                                    </div>
-                                </div>
-
-                                <div className="pt-4 border-t border-slate-50">
-                                    <Button 
-                                        onClick={handleUpdateClientConfig}
-                                        disabled={saving}
-                                        className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-8 h-12 shadow-xl shadow-primary/20"
-                                    >
-                                        {saving ? <Loader2 size={16} className="animate-spin" /> : 'Salvar Alterações do Cliente'}
-                                    </Button>
-                                </div>
-
-                                <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10 flex gap-3">
-                                    <Info size={16} className="text-primary shrink-0" />
-                                    <p className="text-[9px] font-bold text-slate-600 uppercase tracking-tight">Estas configurações sobrescrevem as regras globais dos planos apenas para este cliente.</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Report Upload Modal */}
-                    <AnimatePresence>
-                        {isReportModalOpen && (
-                            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-                                <motion.div 
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden"
-                                >
-                                    <div className="p-8 space-y-6">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                                                    <Upload size={20} />
-                                                </div>
-                                                <div>
-                                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Publicar Documento</h3>
-                                                    <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{selectedClient.name}</p>
-                                                </div>
-                                            </div>
-                                            <button onClick={() => setIsReportModalOpen(false)} className="text-slate-400 hover:text-slate-900">
-                                                <X size={20} />
-                                            </button>
-                                        </div>
-
-                                        <form onSubmit={(e) => handleSaveReport(e)} className="space-y-4">
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Categoria / Pasta</label>
-                                                <select 
-                                                    value={reportCategory}
-                                                    onChange={(e) => setReportCategory(e.target.value)}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none"
-                                                >
-                                                    {REPORT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                                                </select>
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Título do Documento</label>
-                                                <input 
-                                                    required
-                                                    value={reportTitle}
-                                                    onChange={(e) => setReportTitle(e.target.value)}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                                    placeholder="Ex: Conciliação Bancária - Abril"
-                                                />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Referência (Mês/Ano)</label>
-                                                <input 
-                                                    required
-                                                    value={reportPeriod}
-                                                    onChange={(e) => setReportPeriod(e.target.value)}
-                                                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                                    placeholder="Abril 2026"
-                                                />
-                                            </div>
-                                            
-                                            <div className="space-y-1.5">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Arquivo (PDF ou Imagem)</label>
-                                                <div className="relative h-32 border-2 border-dashed border-slate-100 rounded-2xl flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition-all cursor-pointer group">
-                                                    <input 
-                                                        type="file" 
-                                                        accept=".pdf,image/*"
-                                                        onChange={(e) => {
-                                                            const files = Array.from(e.target.files || []);
-                                                            setFilesToUpload(files);
-                                                        }}
-                                                        className="absolute inset-0 opacity-0 cursor-pointer"
-                                                    />
-                                                    <Upload size={24} className="text-slate-300 group-hover:text-primary transition-colors mb-2" />
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                                                        {filesToUpload.length > 0 ? `${filesToUpload[0].name}` : 'Arraste ou clique para enviar'}
-                                                    </p>
-                                                </div>
-                                            </div>
-
-                                            <Button 
-                                                type="submit"
-                                                disabled={saving}
-                                                className="w-full bg-primary text-white rounded-xl text-[10px] font-black uppercase py-4 shadow-xl shadow-primary/20"
-                                            >
-                                                {saving ? <Loader2 size={16} className="animate-spin" /> : 'Publicar Documento'}
-                                            </Button>
-                                        </form>
-                                    </div>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>
-
-                    {/* Preview Modal */}
-                    <AnimatePresence>
-                        {previewDoc && (
-                            <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-                                <motion.div 
-                                    initial={{ opacity: 0, scale: 0.95 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.95 }}
-                                    className="bg-white w-full max-w-5xl h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col"
-                                >
-                                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                                                <FileText size={20} />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">{previewDoc.name}</h3>
-                                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Visualização de Documento</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button 
-                                                variant="outline" 
-                                                size="sm" 
-                                                onClick={() => {
-                                                    const link = document.createElement('a');
-                                                    link.href = previewDoc.url;
-                                                    link.download = previewDoc.name;
-                                                    link.click();
-                                                }}
-                                                className="rounded-xl px-4 text-[10px] font-black uppercase"
-                                            >
-                                                <Upload size={14} className="rotate-180 mr-2" /> Baixar
-                                            </Button>
-                                            <button onClick={() => setPreviewDoc(null)} className="p-2 text-slate-400 hover:text-rose-500">
-                                                <X size={24} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 bg-slate-100 relative">
-                                        {previewDoc.url.includes('application/pdf') || previewDoc.name.toLowerCase().endsWith('.pdf') ? (
-                                            <iframe src={previewDoc.url} className="w-full h-full border-none" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center p-8">
-                                                <img src={previewDoc.url} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl rounded-lg" />
-                                            </div>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            </div>
-                        )}
-                    </AnimatePresence>
-                </Card>
-            );
-        }
-
-        return (
-            <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                            <Users size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Clientes</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Selecione um cliente para enviar relatórios</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                        <div className="relative flex-1 md:w-64">
-                            <input 
-                                type="text"
-                                placeholder="Buscar cliente..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                            />
-                            <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
-                        </div>
-                        <Button 
-                            onClick={() => setIsModalOpen(true)}
-                            className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20 shrink-0"
-                        >
-                            <Plus size={16} className="mr-2" /> Novo Cliente
-                        </Button>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    {loading ? (
-                        <div className="py-12 flex flex-col items-center justify-center gap-3">
-                            <Loader2 className="animate-spin text-primary" size={24} />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Buscando clientes...</p>
-                        </div>
-                    ) : filteredClients.length === 0 ? (
-                        <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
-                            <Users className="mx-auto text-slate-300 mb-2" size={32} />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum cliente encontrado</p>
-                        </div>
-                    ) : (
-                        <div className="flex flex-col gap-3">
-                            {filteredClients.map((c) => (
-                                <motion.div 
-                                    layout
-                                    key={c.id}
-                                    whileHover={{ x: 4 }}
-                                    onClick={() => setSelectedClient(c)}
-                                    className="p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 transition-all cursor-pointer group flex items-center justify-between gap-4"
-                                >
-                                    <div className="flex items-center gap-4 flex-1 min-w-0">
-                                        <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary group-hover:text-white transition-all shadow-inner shrink-0">
-                                            <User size={20} />
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{c.name}</h4>
-                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">{c.companyName || 'Empresa Própria'}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-8 px-4 border-l border-slate-50">
-                                        <div className="flex flex-col min-w-[80px]">
-                                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Plano Ativo</span>
-                                            <span className="text-[9px] font-black text-primary uppercase">{c.planId || 'Essencial'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-primary font-black text-[9px] uppercase tracking-widest whitespace-nowrap opacity-60 group-hover:opacity-100 transition-opacity">
-                                            Gerenciar <ChevronRight size={12} />
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Create Client Modal */}
-                <AnimatePresence>
-                    {isModalOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                            <motion.div 
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
-                            >
-                                <div className="p-8 space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                                                <UserPlus size={20} />
-                                            </div>
-                                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Criação de Cliente</h3>
-                                        </div>
-                                        <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-900">
-                                            <X size={20} />
-                                        </button>
-                                    </div>
-
-                                    <form onSubmit={handleSaveClient} className="space-y-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome Completo</label>
-                                            <input 
-                                                required
-                                                value={name}
-                                                onChange={(e) => setName(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                                placeholder="João Silva"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Razão Social</label>
-                                            <input 
-                                                value={company}
-                                                onChange={(e) => setCompany(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                                placeholder="Sua Empresa LTDA"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Contato</label>
-                                            <input 
-                                                required
-                                                type="email"
-                                                value={email}
-                                                onChange={(e) => setEmail(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                                placeholder="cliente@email.com"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vincular Plano</label>
-                                            <select 
-                                                value={planId}
-                                                onChange={(e) => setPlanId(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none appearance-none"
-                                            >
-                                                <option value="essencial">ESSENCIAL</option>
-                                                <option value="profissional">PROFISSIONAL</option>
-                                                <option value="premium">PREMIUM</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Limite de Lançamentos</label>
-                                            <input 
-                                                type="number"
-                                                value={entriesLimit}
-                                                onChange={(e) => setEntriesLimit(Number(e.target.value))}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none"
-                                                placeholder="Ex: 50 (0 = padrão do plano)"
-                                            />
-                                        </div>
-
-                                        <Button 
-                                            type="submit"
-                                            disabled={saving}
-                                            className="w-full bg-primary text-white rounded-xl text-[10px] font-black uppercase py-4 shadow-xl shadow-primary/20 mt-4"
-                                        >
-                                            {saving ? <Loader2 size={16} className="animate-spin" /> : 'Cadastrar Cliente'}
-                                        </Button>
-                                    </form>
-                                </div>
-                            </motion.div>
-                        </div>
-                    )}
-                </AnimatePresence>
-            </Card>
-        );
-    };
-
-    // Admin Plan & Features Management Component
-    const ClientAccessManagement = () => {
-        const [usersList, setUsersList] = useState<any[]>([]);
-        const [loading, setLoading] = useState(true);
-        const [searchTerm, setSearchTerm] = useState('');
-        const [isInviting, setIsInviting] = useState(false);
-
-        useEffect(() => {
-            if (!isAdmin) return;
-            setLoading(true);
-            const q = query(collection(db, 'userProfiles'), where('role', '==', 'client'));
-            const unsubscribe = onSnapshot(q, (snapshot) => {
-                const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setUsersList(list);
-                setLoading(false);
-            }, (error) => {
-                console.error("Error loading users:", error);
-                handleFirestoreError(error, OperationType.GET, 'userProfiles');
-                setLoading(false);
-            });
-            return () => unsubscribe();
-        }, []);
-
-        const handleToggleBlock = async (client: any) => {
-            const newBlockStatus = !client.isBlocked;
-            try {
-                await updateDoc(doc(db, 'userProfiles', client.id), {
-                    isBlocked: newBlockStatus,
-                    status: newBlockStatus ? 'Inativo' : 'Ativo',
-                    updatedAt: serverTimestamp()
-                });
-            } catch (error) {
-                console.error("Error toggling block:", error);
-            }
-        };
-
-        const handleResetPassword = async (email: string) => {
-            try {
-                await sendPasswordResetEmail(email);
-                alert(`Um link de redefinição de senha foi enviado para ${email}. Por favor, peça ao cliente para verificar a caixa de entrada e a pasta de SPAM.`);
-            } catch (error: any) {
-                console.error("Error sending reset email:", error);
-                alert(error.message || `Erro ao enviar e-mail de redefinição.`);
-            }
-        };
-
-        const handleShareApp = () => {
-            const url = window.location.origin;
-            const text = `Olá! Comece a usar nossa plataforma Fluxo Inteligente para gestão financeira. Acesse: ${url}`;
-            
-            if (navigator.share) {
-                navigator.share({
-                    title: 'Fluxo Inteligente',
-                    text: text,
-                    url: url,
-                }).catch(() => {
-                    navigator.clipboard.writeText(url);
-                    alert("Link do aplicativo copiado!");
-                });
-            } else {
-                navigator.clipboard.writeText(url);
-                alert("Link do aplicativo copiado para a área de transferência!");
-            }
-        };
-
-        const handleInviteUser = async () => {
-            if (!inviteData.email || !inviteData.name) {
-                alert("Por favor, preencha nome e e-mail.");
-                return;
-            }
-            setIsInviting(true);
-            try {
-                // Create a pre-registration profile if needed
-                const clientId = `client_${Date.now()}`;
-                const newClient = {
-                    uid: clientId,
-                    name: inviteData.name,
-                    email: inviteData.email,
-                    planId: inviteData.plan,
-                    role: 'client',
-                    status: 'Ativo',
-                    createdAt: serverTimestamp(),
-                };
-                await setDoc(doc(db, 'userProfiles', clientId), newClient);
-                
-                alert(`Configurações preparadas para ${inviteData.name}. Quando o usuário se cadastrar com o e-mail ${inviteData.email}, ele já terá este plano.`);
-                setIsInviteModalOpen(false);
-                setInviteData({ email: '', name: '', plan: 'essencial' });
-            } catch (err: any) {
-                console.error(err);
-                alert(`Erro ao criar convite: ${err.message}`);
-            } finally {
-                setIsInviting(false);
-            }
-        };
-
-        const filteredUsers = usersList.filter(u => 
-            u.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            u.companyName?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-
-        return (
-            <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                            <Users size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Acessos</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Controle logins, senhas e bloqueios</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                        <Button 
-                            type="button"
-                            onClick={handleShareApp}
-                            variant="ghost"
-                            className="bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl px-4 text-[10px] font-black uppercase tracking-widest h-10 hover:bg-emerald-100"
-                        >
-                            <Share2 size={14} className="mr-2" /> Compartilhar Link
-                        </Button>
-                        <div className="relative flex-1 md:w-64">
-                            <input 
-                                type="text"
-                                placeholder="Buscar usuário..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[10px] font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                            />
-                            <Search className="absolute left-3 top-2.5 text-slate-400" size={14} />
-                        </div>
-                        <Button 
-                            onClick={() => setIsInviteModalOpen(true)}
-                            className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20 shrink-0"
-                        >
-                            <Plus size={16} className="mr-2" /> Novo Acesso
-                        </Button>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                    {loading ? (
-                        <div className="py-12 flex flex-col items-center justify-center gap-3">
-                            <Loader2 className="animate-spin text-primary" size={24} />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Carregando usuários...</p>
-                        </div>
-                    ) : filteredUsers.length === 0 ? (
-                        <div className="py-12 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-100">
-                            <AlertCircle className="mx-auto text-slate-300 mb-2" size={32} />
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Nenhum usuário encontrado</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-4">
-                            {filteredUsers.map((u) => (
-                                <motion.div 
-                                    layout
-                                    key={u.id}
-                                    className={cn(
-                                        "flex flex-col md:flex-row md:items-center justify-between p-5 bg-white border rounded-2xl transition-all group gap-4",
-                                        u.isBlocked ? "border-red-100 bg-red-50/10" : "border-slate-100"
-                                    )}
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className={cn(
-                                            "w-12 h-12 rounded-2xl flex items-center justify-center transition-colors shadow-sm",
-                                            u.isBlocked ? "bg-red-100 text-red-600" : "bg-slate-100 text-slate-400 group-hover:bg-primary/10 group-hover:text-primary"
-                                        )}>
-                                            <User size={20} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-tight truncate">{u.name || 'Sem Nome'}</h4>
-                                                {u.isBlocked && (
-                                                    <span className="px-1.5 py-0.5 bg-red-500 text-white text-[7px] font-black uppercase rounded-full">Bloqueado</span>
-                                                )}
-                                            </div>
-                                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest truncate">{u.email}</p>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <span className="text-[8px] font-black text-primary uppercase tracking-widest border border-primary/20 px-1.5 py-0.5 rounded-md">
-                                                    {u.planId || 'Sem Plano'}
-                                                </span>
-                                                {u.companyName && (
-                                                    <>
-                                                        <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                                        <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest truncate">{u.companyName}</span>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-2 self-end md:self-center">
-                                        <Button 
-                                            onClick={() => handleResetPassword(u.email)}
-                                            variant="ghost"
-                                            title="Enviar link de redefinição de senha"
-                                            className="h-10 px-4 bg-slate-50 text-slate-500 hover:bg-amber-50 hover:text-amber-600 rounded-xl border border-slate-100 text-[9px] font-black uppercase tracking-widest"
-                                        >
-                                            <LockIcon size={14} className="mr-2" /> Redefinir Senha
-                                        </Button>
-                                        <Button 
-                                            onClick={() => handleToggleBlock(u)}
-                                            variant="ghost"
-                                            className={cn(
-                                                "rounded-xl h-10 px-4 flex items-center justify-center transition-all border text-[9px] font-black uppercase tracking-widest",
-                                                u.isBlocked 
-                                                    ? "bg-rose-500 text-white border-rose-600 hover:bg-rose-600" 
-                                                    : "bg-slate-50 text-slate-400 hover:text-rose-500 border-slate-100"
-                                            )}
-                                        >
-                                            {u.isBlocked ? <><UnlockIcon size={14} className="mr-2" /> Desbloquear</> : <><LockIcon size={14} className="mr-2" /> Bloquear Login</>}
-                                        </Button>
-                                    </div>
-                                </motion.div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                {/* Invite Modal Backdrop */}
-                <AnimatePresence>
-                    {isInviteModalOpen && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                            <motion.div 
-                                initial={{ opacity: 0, scale: 0.95 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.95 }}
-                                className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
-                            >
-                                <div className="p-8 space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                                                <Users size={20} />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Novo Acesso de Cliente</h3>
-                                                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Crie uma conta para seu cliente</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setIsInviteModalOpen(false)} className="text-slate-400 hover:text-slate-900">
-                                            <X size={20} />
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome do Cliente</label>
-                                            <input 
-                                                value={inviteData.name}
-                                                onChange={(e) => setInviteData({...inviteData, name: e.target.value})}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                                placeholder="Ex: João Silva"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">E-mail de Acesso</label>
-                                            <input 
-                                                value={inviteData.email}
-                                                onChange={(e) => setInviteData({...inviteData, email: e.target.value})}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all"
-                                                placeholder="cliente@email.com"
-                                            />
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vincular Plano</label>
-                                            <select 
-                                                value={inviteData.plan}
-                                                onChange={(e) => setInviteData({...inviteData, plan: e.target.value})}
-                                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all appearance-none"
-                                            >
-                                                <option value="essencial">ESSENCIAL</option>
-                                                <option value="profissional">PROFISSIONAL</option>
-                                                <option value="premium">PREMIUM</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <Button 
-                                        onClick={handleInviteUser}
-                                        disabled={isInviting}
-                                        className="w-full bg-primary text-white rounded-xl text-[10px] font-black uppercase py-4 shadow-xl shadow-primary/20"
-                                    >
-                                        {isInviting ? <Loader2 size={16} className="animate-spin" /> : 'Confirmar e Enviar Instruções'}
-                                    </Button>
-                                </div>
-                            </motion.div>
-                        </div>
-                    )}
-                </AnimatePresence>
-            </Card>
-        );
-    };
-
-    // Admin Plan & Features Management Component
-    const PlanFeaturesManagement = () => {
-        const [plans, setPlans] = useState<any>({
-            essencial: { level: 1, label: 'Essencial', price: 400, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária'] },
-            profissional: { level: 2, label: 'Profissional', price: 800, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa'] },
-            premium: { level: 3, label: 'Premium', price: 1200, reports: ['📅 Minha Agenda de Contas', '🔄 Conciliação Bancária', '📈 DRE Gerencial', '💰 Fluxo de Caixa', '📝 Relatório Mensal', '🎯 Dashboards'] }
-        });
-        const [differentialPhrase, setDifferentialPhrase] = useState('Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.');
-        const [loading, setLoading] = useState(true);
-        const [saving, setSaving] = useState(false);
-
-        useEffect(() => {
-            if (!isAdmin) return;
-            const path = 'system_configs/plans_config';
-            const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    if (data.plans) setPlans(data.plans);
-                    if (data.differentialPhrase) setDifferentialPhrase(data.differentialPhrase);
-                }
-                setLoading(false);
-            }, (error) => {
-                console.error("Error listening to plans config:", error);
-                handleFirestoreError(error, OperationType.GET, path);
-                setLoading(false);
-            });
-            return () => unsubscribe();
-        }, [isAdmin]);
-
-    const handleSave = async () => {
-        setSaving(true);
-        try {
-            // Get current config for price comparison
-            const currentSnap = await getDoc(doc(db, 'system_configs', 'plans_config'));
-            const currentData = currentSnap.exists() ? currentSnap.data().plans : {};
-            
-            // Create a deep copy to avoid mutations
-            const plansToSave = JSON.parse(JSON.stringify(plans));
-            
-            Object.keys(plansToSave).forEach(key => {
-                const oldPrice = (currentData && currentData[key]) ? currentData[key].price : undefined;
-                const newPrice = plansToSave[key].price;
-                
-                if (oldPrice !== undefined && oldPrice !== newPrice) {
-                    plansToSave[key].previousPrice = oldPrice;
-                    plansToSave[key].priceUpdatedAt = new Date().toISOString();
-                } else if (currentData && currentData[key]?.priceUpdatedAt) {
-                    plansToSave[key].previousPrice = currentData[key].previousPrice;
-                    plansToSave[key].priceUpdatedAt = currentData[key].priceUpdatedAt;
-                }
-                
-                // Safety check: ensure entriesLimit is saved as a number
-                if (plansToSave[key].entriesLimit !== undefined) {
-                    plansToSave[key].entriesLimit = Number(plansToSave[key].entriesLimit) || 0;
-                }
-            });
-
-            // Ensure the document structure is exactly as expected
-            const configPayload = {
-                plans: plansToSave,
-                differentialPhrase: differentialPhrase,
-                updatedAt: serverTimestamp(),
-                updatedBy: user?.uid
-            };
-
-            await setDoc(doc(db, 'system_configs', 'plans_config'), configPayload);
-
-            alert("Configurações salvas com sucesso!");
-        } catch (error: any) {
-            console.error("Error saving plans config:", error);
-            alert(`Erro ao salvar: ${error.message || 'Verifique sua conexão'}`);
-        } finally {
-            setSaving(false);
-        }
-    };
-
-        const toggleReport = (planKey: string, reportName: string) => {
-            const currentReports = [...plans[planKey].reports];
-            const index = currentReports.indexOf(reportName);
-            
-            if (index > -1) {
-                currentReports.splice(index, 1);
-            } else {
-                currentReports.push(reportName);
-            }
-
-            setPlans({
-                ...plans,
-                [planKey]: {
-                    ...plans[planKey],
-                    reports: currentReports
-                }
-            });
-        };
-
-        const allReports = [
-            '📅 Minha Agenda de Contas',
-            '🔄 Conciliação Bancária',
-            '📈 DRE Gerencial',
-            '💰 Fluxo de Caixa',
-            '📝 Relatório Mensal',
-            '🎯 Dashboards'
-        ];
-
-        return (
-            <Card className="p-8 space-y-8 rounded-[2.5rem] border-slate-100 shadow-xl shadow-slate-200/5">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center">
-                            <Settings size={20} />
-                        </div>
-                        <div>
-                            <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Gestão de Planos</h2>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Configure os relatórios por plano</p>
-                        </div>
-                    </div>
-                    <Button 
-                        onClick={handleSave} 
-                        disabled={saving || loading}
-                        className="bg-primary text-white rounded-xl text-[10px] font-black uppercase px-6 h-10 shadow-lg shadow-primary/20 transition-all hover:translate-y-[-2px]"
-                    >
-                        {saving ? <Loader2 size={16} className="animate-spin" /> : <><Save size={16} className="mr-2" /> Salvar Alterações</>}
-                    </Button>
-                </div>
-
-                <div className="bg-white border border-slate-100 rounded-[2rem] p-8 mb-8 shadow-sm">
-                    <div className="flex items-center gap-4 mb-6">
-                        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                            <Rocket size={20} />
-                        </div>
-                        <div>
-                            <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">Frase Diferencial</h3>
-                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Aparece na parte inferior da página de planos do cliente</p>
-                        </div>
-                    </div>
-                    <textarea 
-                        value={differentialPhrase}
-                        onChange={(e) => setDifferentialPhrase(e.target.value)}
-                        placeholder="Digite a frase que aparecerá abaixo da tabela de planos..."
-                        className="w-full h-32 bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all resize-none shadow-inner"
-                    />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {Object.keys(plans)
-                        .sort((a, b) => (plans[a].level || 0) - (plans[b].level || 0))
-                        .map((planKey) => (
-                        <div key={planKey} className="space-y-4 p-6 bg-slate-50/50 rounded-3xl border border-slate-100">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">{plans[planKey].label}</h3>
-                                <span className="text-[8px] font-black text-primary uppercase tracking-[0.2em] bg-primary/5 px-2 py-1 rounded-lg">Nível {plans[planKey].level}</span>
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Valor Mensal (R$)</label>
-                                <input 
-                                    type="number"
-                                    value={plans[planKey].price || 0}
-                                    onChange={(e) => setPlans({
-                                        ...plans,
-                                        [planKey]: {
-                                            ...plans[planKey],
-                                            price: Number(e.target.value)
-                                        }
-                                    })}
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
-                                    placeholder="0,00"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Lançamentos Mensais (0 = ILIM.)</label>
-                                <input 
-                                    type="number"
-                                    value={plans[planKey].entriesLimit || 0}
-                                    onChange={(e) => setPlans({
-                                        ...plans,
-                                        [planKey]: {
-                                            ...plans[planKey],
-                                            entriesLimit: Number(e.target.value)
-                                        }
-                                    })}
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
-                                    placeholder="Ex: 50"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nome de Exibição</label>
-                                <input 
-                                    type="text"
-                                    value={plans[planKey].label || ''}
-                                    onChange={(e) => setPlans({
-                                        ...plans,
-                                        [planKey]: {
-                                            ...plans[planKey],
-                                            label: e.target.value
-                                        }
-                                    })}
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
-                                    placeholder="Ex: Essencial — Operação"
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Slogan / Tagline</label>
-                                <input 
-                                    type="text"
-                                    value={plans[planKey].tagline || ''}
-                                    onChange={(e) => setPlans({
-                                        ...plans,
-                                        [planKey]: {
-                                            ...plans[planKey],
-                                            tagline: e.target.value
-                                        }
-                                    })}
-                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-primary/5 transition-all shadow-sm"
-                                    placeholder="Ex: Organização e rotina"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between px-1 mb-2">
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Relatórios Disponíveis</p>
-                                    {planKey === 'essencial' && (
-                                        <span className="text-[8px] font-bold text-primary bg-primary/5 px-2 py-0.5 rounded-full uppercase tracking-tighter">Fixo: Conciliação</span>
-                                    )}
-                                </div>
-                                {allReports.map((report) => {
-                                    const isEnabled = plans[planKey].reports.includes(report);
-                                    // Conciliação Bancária is mandatory for all plans according to user request
-                                    const isMandatory = normalizeString(report).includes('conciliacao');
-                                    
-                                    return (
-                                        <button
-                                            key={report}
-                                            onClick={() => !isMandatory && toggleReport(planKey, report)}
-                                            className={cn(
-                                                "w-full flex items-center justify-between p-3 rounded-xl text-[10px] font-black uppercase transition-all border",
-                                                (isEnabled || isMandatory)
-                                                    ? "bg-white border-primary/20 text-slate-900 shadow-sm" 
-                                                    : "bg-slate-100/50 border-transparent text-slate-400 opacity-60 hover:opacity-100",
-                                                isMandatory && "cursor-default"
-                                            )}
-                                        >
-                                            <span className="truncate mr-2">{report}</span>
-                                            <div className={cn(
-                                                "w-4 h-4 rounded-full flex items-center justify-center transition-colors",
-                                                (isEnabled || isMandatory) ? "bg-primary text-white" : "bg-slate-200"
-                                            )}>
-                                                {(isEnabled || isMandatory) && <CheckCircle2 size={10} />}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            <div className="pt-4 border-t border-slate-100 space-y-3">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Vantagens (Site)</p>
-                                <div className="space-y-2">
-                                    {(plans[planKey].features || []).map((feature: string, idx: number) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <input 
-                                                value={feature}
-                                                onChange={(e) => {
-                                                    const newFeatures = [...(plans[planKey].features || [])];
-                                                    newFeatures[idx] = e.target.value;
-                                                    setPlans({
-                                                        ...plans,
-                                                        [planKey]: { ...plans[planKey], features: newFeatures }
-                                                    });
-                                                }}
-                                                className="flex-1 bg-white border border-slate-100 rounded-lg px-2 py-1 text-[9px] font-bold text-slate-600 outline-none"
-                                            />
-                                            <button 
-                                                onClick={() => {
-                                                    const newFeatures = (plans[planKey].features || []).filter((_: any, i: number) => i !== idx);
-                                                    setPlans({
-                                                        ...plans,
-                                                        [planKey]: { ...plans[planKey], features: newFeatures }
-                                                    });
-                                                }}
-                                                className="p-1 text-slate-300 hover:text-red-400 transition-colors"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                    <button 
-                                        onClick={() => {
-                                            const newFeatures = [...(plans[planKey].features || []), "Nova Vantagem"];
-                                            setPlans({
-                                                ...plans,
-                                                [planKey]: { ...plans[planKey], features: newFeatures }
-                                            });
-                                        }}
-                                        className="w-full py-1.5 border border-dashed border-slate-200 rounded-lg text-[8px] font-black text-slate-400 uppercase hover:text-primary hover:border-primary/20 transition-all"
-                                    >
-                                        + Adicionar Vantagem
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-
-                <div className="bg-amber-50 rounded-2xl p-4 flex gap-3 border border-amber-100">
-                    <AlertCircle className="text-amber-500 shrink-0" size={18} />
-                    <p className="text-[10px] font-bold text-amber-900 uppercase tracking-tight leading-relaxed">
-                        Atenção: Estas configurações alteram o acesso de todos os clientes em tempo real de acordo com o plano vinculado ao perfil deles.
-                    </p>
-                </div>
-            </Card>
-        );
-    };
 
     return (
         <div className="max-w-6xl mx-auto px-4 py-6 space-y-8 animate-in fade-in duration-700">
@@ -2387,7 +2478,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
                                     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                                         {adminActiveTab === 'payments' && <AdminPaymentsCard />}
                                         {adminActiveTab === 'clients' && <ClientsManagement />}
-                                        {adminActiveTab === 'plans' && <PlanFeaturesManagement />}
+                                        {adminActiveTab === 'plans' && <PlanFeaturesManagement isAdmin={isAdmin} user={user} />}
                                         {adminActiveTab === 'users' && <ClientAccessManagement />}
                                         {adminActiveTab === 'company' && <CompanyManagement />}
                                         {adminActiveTab === 'lgpd' && (

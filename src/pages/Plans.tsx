@@ -284,9 +284,33 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
                     <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-primary/10 transition-colors" />
                     <div className="relative z-10">
                         <span className="text-2xl mb-4 block">🚀</span>
-                        <p className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-tight leading-relaxed">
+                        <p className="text-xs md:text-sm font-black text-slate-800 uppercase tracking-tight leading-relaxed mb-6">
                             {plansConfig?.differentialPhrase || 'Tecnologia e inteligência artificial aplicadas à gestão financeira para oferecer mais clareza, precisão e agilidade nas decisões do seu negócio.'}
                         </p>
+                        {(() => {
+                            const configData = Array.isArray(plansConfig) 
+                                ? plansConfig.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p }), {})
+                                : (plansConfig?.plans || {});
+                            
+                            const firstPlan = Object.values(configData)[0] as any;
+                            const num = firstPlan?.whatsapp || '';
+                            if (!num) return null;
+                            
+                            const cleanNumber = num.replace(/\D/g, '');
+                            const message = encodeURIComponent('Olá, vi os planos no sistema e gostaria de tirar algumas dúvidas.');
+                            const waUrl = `https://wa.me/${cleanNumber}?text=${message}`;
+
+                            return (
+                                <a 
+                                    href={waUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-3 px-8 py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-600 transition-all hover:scale-105 active:scale-95"
+                                >
+                                    Falar com Consultor no WhatsApp
+                                </a>
+                            );
+                        })()}
                     </div>
                 </div>
             </div>
