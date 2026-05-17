@@ -427,7 +427,7 @@ export const Layout = ({ children, activeTab, setActiveTab }: LayoutProps) => {
         <NotificationPrompt />
         
         {/* Floating WhatsApp Button */}
-        {whatsappUrl && !isAdmin && (
+        {whatsappUrl && (!isAdmin || isPreviewMode) && (
           <a 
             href={whatsappUrl}
             target="_blank"

@@ -1425,8 +1425,9 @@ const PlanFeaturesManagement = ({ isAdmin, user }: { isAdmin: boolean, user: any
 // Utility function for plan prices
 const getPlanPrice = (planId?: string, paymentDate?: Date, plansConfig?: any) => {
     const planKey = planId?.toLowerCase();
-    if (plansConfig && planKey && plansConfig[planKey]) {
-        const plan = plansConfig[planKey];
+    const configData = plansConfig?.plans || plansConfig; // Fallback for safety
+    if (configData && planKey && configData[planKey]) {
+        const plan = configData[planKey];
         if (plan.priceUpdatedAt && plan.previousPrice !== undefined && paymentDate) {
             const updatedAt = plan.priceUpdatedAt.toDate ? plan.priceUpdatedAt.toDate() : new Date(plan.priceUpdatedAt);
             if (paymentDate < updatedAt) return plan.previousPrice;
@@ -2315,14 +2316,14 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
         id: 'upcoming',
         month: nextDueDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
         date: nextDueDate.toLocaleDateString('pt-BR'),
-        amount: profile?.monthlyValue || getPlanPrice(profile?.planId, nextDueDate),
+        amount: profile?.monthlyValue || getPlanPrice(profile?.planId, nextDueDate, plansConfig),
         status: 'pendente',
         method: 'Aguardando Pagamento'
     };
 
     const activePlan = {
         name: profile?.planId === 'essencial' ? 'Essencial' : profile?.planId === 'profissional' ? 'Profissional' : profile?.planId === 'premium' ? 'Premium' : 'Nenhum Plan Ativo',
-        price: profile?.monthlyValue || getPlanPrice(profile?.planId, today),
+        price: profile?.monthlyValue || getPlanPrice(profile?.planId, today, plansConfig),
         renovation: nextDueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
     };
 

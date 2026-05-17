@@ -38,7 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const path = 'system_configs/plans_config';
     const unsubscribe = onSnapshot(doc(db, 'system_configs', 'plans_config'), async (docSnap) => {
       if (docSnap.exists()) {
-        setPlansConfig(docSnap.data().plans);
+        setPlansConfig(docSnap.data());
       } else if (userIsAdmin) {
         // Init default plans if admin and doesn't exist
         console.log("Initializing default plans config...");
@@ -90,11 +90,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         };
         try {
-          await setDoc(doc(db, 'system_configs', 'plans_config'), { 
+          const payload = { 
             plans: defaultPlans,
             updatedAt: serverTimestamp() 
-          });
-          setPlansConfig(defaultPlans);
+          };
+          await setDoc(doc(db, 'system_configs', 'plans_config'), payload);
+          setPlansConfig(payload);
         } catch (err) {
           console.error("Failed to init plans config:", err);
         }

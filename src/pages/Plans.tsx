@@ -92,10 +92,10 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
         const basePlans = getBasePlans();
         if (!plansConfig) return basePlans;
 
-        // plansConfig could be an object (from admin UI) or array (legacy)
-        const configData = Array.isArray(plansConfig) 
+        // plansConfig.plans is the map of plan data
+        const configData = plansConfig.plans || (Array.isArray(plansConfig) 
             ? plansConfig.reduce((acc: any, p: any) => ({ ...acc, [p.id]: p }), {})
-            : plansConfig;
+            : plansConfig);
 
         return basePlans.map(base => {
             const dynamic = configData[base.id];

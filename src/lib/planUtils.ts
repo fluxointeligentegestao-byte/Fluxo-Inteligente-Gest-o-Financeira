@@ -81,11 +81,12 @@ export const canAccessReport = (plan: string | undefined | null, category: strin
     };
 
     // Extract proper config for this plan
-    let planConfig = (dynamicConfig && dynamicConfig[normalizedPlan]);
+    const configData = dynamicConfig?.plans || dynamicConfig;
+    let planConfig = (configData && configData[normalizedPlan]);
     
     // Fallback if config is an array (legacy format)
-    if (!planConfig && Array.isArray(dynamicConfig)) {
-        planConfig = dynamicConfig.find((p: any) => (p.id || p.planId || '').toLowerCase() === normalizedPlan);
+    if (!planConfig && Array.isArray(configData)) {
+        planConfig = configData.find((p: any) => (p.id || p.planId || '').toLowerCase() === normalizedPlan);
     }
 
     // If we have an explicit dynamic configuration for this plan and it has the reports list,
@@ -127,7 +128,8 @@ export const canAccessTab = (plan: string | undefined | null, tabId: string, isA
     if (publicTabs.includes(tabId)) return true;
     
     const normalizedPlan = normalizePlan(plan);
-    const config = (dynamicConfig && dynamicConfig[normalizedPlan]) || PLAN_CONFIG[normalizedPlan];
+    const configData = dynamicConfig?.plans || dynamicConfig;
+    const config = (configData && configData[normalizedPlan]) || PLAN_CONFIG[normalizedPlan];
     const level = config.level;
     
     // Feature-specific tabs
