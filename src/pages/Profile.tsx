@@ -1430,10 +1430,19 @@ const getPlanPrice = (planId?: string, paymentDate?: Date, plansConfig?: any) =>
         const plan = configData[planKey];
         if (plan.priceUpdatedAt && plan.previousPrice !== undefined && paymentDate) {
             const updatedAt = plan.priceUpdatedAt.toDate ? plan.priceUpdatedAt.toDate() : new Date(plan.priceUpdatedAt);
-            if (paymentDate < updatedAt) return plan.previousPrice;
+            
+            // If updated today and payment is today, use new price
+            const isSameDay = paymentDate.toDateString() === updatedAt.toDateString();
+            if (paymentDate < updatedAt && !isSameDay) return plan.previousPrice;
         }
         return plan.price;
     }
+    return null; // Return null if not in dynamic config to allow fallbacks
+};
+
+// Standard fallbacks if no dynamic config exists
+const getFallbackPrice = (planId?: string) => {
+    const planKey = planId?.toLowerCase();
     if (planKey === 'essencial') return 400;
     if (planKey === 'profissional') return 800;
     if (planKey === 'premium') return 1200;
@@ -1524,7 +1533,7 @@ const AdminPaymentsCard = () => {
         paid: clientsWithPayments.filter(c => c.paymentStatus === 'pago').length,
         pending: clientsWithPayments.filter(c => c.paymentStatus === 'pendente').length,
         total: clientsWithPayments.length,
-        revenue: clientsWithPayments.filter(c => c.paymentStatus === 'pago').reduce((acc, c) => acc + (c.monthlyValue || getPlanPrice(c.planId, refDate, plansConfig)), 0)
+        revenue: clientsWithPayments.filter(c => c.paymentStatus === 'pago').reduce((acc, c) => acc + (getPlanPrice(c.planId, refDate, plansConfig) || c.monthlyValue || getFallbackPrice(c.planId)), 0)
     };
 
     const monthYearLabel = new Date(selectedMonth + '-02').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
@@ -1605,7 +1614,7 @@ const AdminPaymentsCard = () => {
                                         <div className="flex items-center gap-2 mt-0.5">
                                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[100px]">{client.planId || 'Plano não definido'}</span>
                                             <div className="w-1 h-1 rounded-full bg-slate-200" />
-                                            <span className="text-[8px] font-black text-primary uppercase tracking-widest">{formatCurrency(client.monthlyValue || getPlanPrice(client.planId, refDate, plansConfig))}</span>
+                                            <span className="text-[8px] font-black text-primary uppercase tracking-widest">{formatCurrency(getPlanPrice(client.planId, refDate, plansConfig) || client.monthlyValue || getFallbackPrice(client.planId))}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -2289,7 +2298,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
     };
 
     // Simulated payment history based on registration date
-    const registrationDate = profile?.createdAt?.toDate ? profile.createdAt.toDate() : new Date();
+    const registrationDate = effectiveProfile?.createdAt?.toDate ? effectiveProfile.createdAt.toDate() : new Date();
     const today = new Date();
     const [selectedPayment, setSelectedPayment] = useState<any>(null);
     const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card' | null>(null);
@@ -2303,7 +2312,7 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
             id: currentMonth.getTime().toString(),
             month: currentMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
             date: dueDate.toLocaleDateString('pt-BR'),
-            amount: profile?.monthlyValue || getPlanPrice(profile?.planId, dueDate, plansConfig),
+            amount: getPlanPrice(effectiveProfile?.planId, dueDate, plansConfig) || effectiveProfile?.monthlyValue || getFallbackPrice(effectiveProfile?.planId),
             status: 'pago',
             method: 'Cartão •••• 4412'
         });
@@ -2316,14 +2325,17 @@ export const Profile = ({ setActiveTab, onBack }: { setActiveTab?: (tab: string)
         id: 'upcoming',
         month: nextDueDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }),
         date: nextDueDate.toLocaleDateString('pt-BR'),
-        amount: profile?.monthlyValue || getPlanPrice(profile?.planId, nextDueDate, plansConfig),
+        amount: getPlanPrice(effectiveProfile?.planId, nextDueDate, plansConfig) || effectiveProfile?.monthlyValue || getFallbackPrice(effectiveProfile?.planId),
         status: 'pendente',
         method: 'Aguardando Pagamento'
     };
 
     const activePlan = {
-        name: profile?.planId === 'essencial' ? 'Essencial' : profile?.planId === 'profissional' ? 'Profissional' : profile?.planId === 'premium' ? 'Premium' : 'Nenhum Plan Ativo',
-        price: profile?.monthlyValue || getPlanPrice(profile?.planId, today, plansConfig),
+        name: (plansConfig?.plans?.[effectiveProfile?.planId?.toLowerCase() || '']?.label) || 
+              (effectiveProfile?.planId === 'essencial' ? 'Essencial' : 
+               effectiveProfile?.planId === 'profissional' ? 'Profissional' : 
+               effectiveProfile?.planId === 'premium' ? 'Premium' : 'Nenhum Plan Ativo'),
+        price: getPlanPrice(effectiveProfile?.planId, undefined, plansConfig) || effectiveProfile?.monthlyValue || getFallbackPrice(effectiveProfile?.planId),
         renovation: nextDueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
     };
 

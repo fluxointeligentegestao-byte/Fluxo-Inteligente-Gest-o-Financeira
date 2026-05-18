@@ -136,12 +136,11 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
         });
     }, [plansConfig]);
 
-    const handleSelectPlan = async (planId: string, price: number) => {
+    const handleSelectPlan = async (planId: string) => {
         setIsUpdating(planId);
         try {
             await updateProfile({
-                planId: planId,
-                monthlyValue: price
+                planId: planId
             });
         } catch (error) {
             console.error('Error updating plan:', error);
@@ -246,7 +245,7 @@ export const Plans = ({ onBack }: { onBack?: () => void }) => {
                             <div className="px-8 pb-8">
                                 <Button 
                                     variant={plan.highlight ? 'primary' : profile?.planId === plan.id ? 'ghost' : 'outline'} 
-                                    onClick={() => handleSelectPlan(plan.id, plan.price)}
+                                    onClick={() => handleSelectPlan(plan.id)}
                                     disabled={profile?.planId === plan.id || isUpdating !== null}
                                     className={cn(
                                         "w-full rounded-2xl h-12 text-[10px] font-black uppercase tracking-widest shadow-sm hover:shadow-lg transition-all",
